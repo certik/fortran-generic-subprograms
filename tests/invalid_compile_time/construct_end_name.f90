@@ -1,3 +1,7 @@
+! TEST-RULE: C1158
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: C1158|END SELECT.*construct name|construct name.*SELECT
+! TEST-ERROR-PHASE: compile
 ! Invalid: C1158. END SELECT has a construct name and SELECT does not.
 module construct_end_name_m
   implicit none
@@ -9,6 +13,7 @@ contains
       x = 0
     rank (1)
       x = 1
+    ! TEST-ERROR-HERE
     end select gr
   end subroutine
 end module

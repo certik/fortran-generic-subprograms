@@ -1,3 +1,4 @@
+! TEST-RULE: 14.2.2 15.5.5.1 15.6.2.4
 ! A module generic is use-associated. The caller does not redeclare it.
 module module_use_m
   implicit none

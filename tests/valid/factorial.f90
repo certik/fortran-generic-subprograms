@@ -1,3 +1,5 @@
+! TEST-RULE: 15.6.2.4 NOTE6
+! TEST-REQUIRES: int32 int64
 ! 15.6.2.4 NOTE 6. n-1 has the same type and kind as n, so the recursive
 ! reference resolves to the same specific. 0 and 1 both return 1.
 module factorial_m
@@ -22,7 +24,6 @@ program factorial_p
   use factorial_m
   implicit none
   integer(int64), parameter :: fact13 = 6227020800_int64
-  if (int32 <= 0 .or. int64 <= 0) error stop "need int32 and int64"
   if (factorial(0) /= 1) error stop "0!"
   if (factorial(1_int32) /= 1_int32) error stop "1!"
   if (factorial(5) /= 120) error stop "5!"

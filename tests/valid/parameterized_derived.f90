@@ -1,3 +1,5 @@
+! TEST-RULE: R712 R713 R714 C719 C721 C722 C723 15.6.2.4
+! TEST-REQUIRES: int32 int64
 ! Kind-parameter arrays multiply; a scalar kind does not. Length parameters
 ! are assumed (7.3.2.2 NOTE 2, C722, C723). Requires kind(0.0) /= kind(0.0d0).
 module parameterized_derived_m
@@ -51,7 +53,7 @@ program parameterized_derived_p
   type(u(k=int32, n=4)) :: u32
   type(u(k=int64, n=5)) :: u64
   if (ks == kd) error stop "need distinct default real and double precision"
-  if (int32 <= 0 .or. int64 <= 0) error stop "need int32 and int64"
+  if (int32 < 0 .or. int64 < 0) error stop "need int32 and int64"
   call check(a1, ks, 1, 3)
   call check(a2, ks, 2, 3)
   call check(a4, ks, 4, 2)

@@ -1,3 +1,7 @@
+! TEST-RULE: C1159
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: C1159|CLASSOF.*not.*type-generic|selector.*type-generic dummy
+! TEST-ERROR-PHASE: compile
 ! Invalid: C1159. CLASSOF(x) is not a generic dummy.
 module select_on_classof_m
   implicit none
@@ -11,6 +15,7 @@ contains
   generic subroutine s(x)
     type(base, other) :: x
     classof(x), allocatable :: y
+    ! TEST-ERROR-HERE
     select generic type (y)
     declared type is (base)
       allocate(y)

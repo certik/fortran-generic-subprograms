@@ -1,3 +1,4 @@
+! TEST-RULE: R706 R771 R772 R775 R776 R1157
 ! Interoperable enum types are generic-type-specifiers. Enumerators themselves
 ! are integers; values of the enum type are produced by an enum constructor.
 module enum_bind_c_m
@@ -14,9 +15,21 @@ contains
     integer :: n
     select generic type (x)
     declared type is (colour)
-      n = 1
+      if (x == colour(red)) then
+        n = 11
+      else if (x == colour(green)) then
+        n = 12
+      else
+        n = -1
+      end if
     declared type is (fruit)
-      n = 2
+      if (x == fruit(apple)) then
+        n = 21
+      else if (x == fruit(pear)) then
+        n = 22
+      else
+        n = -2
+      end if
     end select
   end function
 end module
@@ -24,6 +37,8 @@ end module
 program enum_bind_c_p
   use enum_bind_c_m
   implicit none
-  if (code(colour(red)) /= 1) error stop "colour"
-  if (code(fruit(pear)) /= 2) error stop "fruit"
+  if (code(colour(red)) /= 11) error stop "colour red"
+  if (code(colour(green)) /= 12) error stop "colour green"
+  if (code(fruit(apple)) /= 21) error stop "fruit apple"
+  if (code(fruit(pear)) /= 22) error stop "fruit pear"
 end program

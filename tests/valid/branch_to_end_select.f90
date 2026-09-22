@@ -1,3 +1,4 @@
+! TEST-RULE: 11.1.10.2 11.1.11.2 11.2.1
 ! A branch to the END SELECT of SELECT GENERIC is allowed from inside the
 ! construct (11.1.10.2, 11.1.11.2).
 module branch_to_end_select_m

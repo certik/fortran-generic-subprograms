@@ -1,3 +1,4 @@
+! TEST-RULE: R704 C709 C713 7.3.2.1 15.6.2.4
 ! CLASSOF(x) has the declared type of x and is polymorphic. It is not a
 ! generic dummy and does not add a combination (7.3.2.1).
 module classof_dependent_m

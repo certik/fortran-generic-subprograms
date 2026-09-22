@@ -1,6 +1,8 @@
+! TEST-RULE: R707 R708 C718 15.6.2.4
+! TEST-REQUIRES: real32 real64
 ! REAL(REAL_KINDS) and COMPLEX([REAL32, REAL64]) (7.3.2.2).
-! Assumes REAL32 and REAL64 exist and differ. Every real kind is a specific
-! of twice; the program executes the kinds it can name portably.
+! Every real kind is a specific of twice; the program also exercises two
+! named, processor-optional kinds declared in TEST-REQUIRES.
 module real_complex_kinds_m
   use, intrinsic :: iso_fortran_env, only: real32, real64, real_kinds
   implicit none
@@ -31,9 +33,9 @@ program real_complex_kinds_p
   integer, parameter :: p6 = selected_real_kind(6)
   complex(real32) :: c32
   complex(real64) :: c64
-  if (real32 <= 0 .or. real64 <= 0 .or. real32 == real64) &
+  if (real32 < 0 .or. real64 < 0 .or. real32 == real64) &
     error stop "need distinct real32 and real64"
-  if (p6 <= 0) error stop "selected_real_kind(6)"
+  if (p6 < 0) error stop "selected_real_kind(6)"
   if (twice(1.0_real32) /= 2.0_real32) error stop "real32"
   if (twice(1.0_real64) /= 2.0_real64) error stop "real64"
   if (twice(1.0) /= 2.0) error stop "default real"

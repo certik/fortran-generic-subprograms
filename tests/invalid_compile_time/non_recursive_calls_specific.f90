@@ -1,3 +1,7 @@
+! TEST-RULE: 15.6.2.1p3
+! TEST-DIAGNOSTIC-CLASS: enhanced
+! TEST-ERROR: NON_RECURSIVE.*(recursive|calls)|recursive.*NON_RECURSIVE
+! TEST-ERROR-PHASE: compile
 ! Invalid: 15.6.2.1 p3. NON_RECURSIVE forbids any specific from calling any
 ! specific of the same subprogram. This is not a numbered constraint; the
 ! suite still rejects it.
@@ -9,6 +13,7 @@ contains
     real :: y
     select generic type (x)
     declared type is (integer)
+      ! TEST-ERROR-HERE
       y = widen(real(x))
     declared type is (real)
       y = x

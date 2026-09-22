@@ -1,3 +1,4 @@
+! TEST-RULE: C1157 C1158 C1163 R1150 R1155
 ! Construct names on SELECT GENERIC RANK and SELECT GENERIC TYPE (C1157, C1163).
 module construct_name_m
   implicit none

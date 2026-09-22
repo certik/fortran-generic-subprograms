@@ -1,3 +1,7 @@
+! TEST-RULE: C1517
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: C1517|CLASS.*not distinguishable|ambiguous.*generic
+! TEST-ERROR-PHASE: compile
 ! Invalid: 15.4.3.4.5 and 7.3.3. CLASS(base) is TKR compatible with
 ! CLASS(child) when child extends base, so the specifics are not distinguishable.
 ! TYPE(base, child) would be legal; CLASS(base, child) is not.
@@ -11,6 +15,7 @@ module parent_and_extension_m
   end type
 contains
   generic subroutine s(x)
-    class(base, child) :: x
-  end subroutine
-end module
+      ! TEST-ERROR-HERE
+      class(base, child) :: x
+    end subroutine
+  end module

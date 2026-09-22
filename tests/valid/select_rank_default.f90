@@ -1,3 +1,4 @@
+! TEST-RULE: R831 R832 R833 R1150 R1152 11.1.10
 ! RANK list, range, and RANK DEFAULT. A rank that matches no list uses the
 ! default. No match and no default would leave the assignment unmade; here
 ! every rank of the dummy matches something (11.1.10).

@@ -1,3 +1,7 @@
+! TEST-RULE: 11.1.10.2
+! TEST-DIAGNOSTIC-CLASS: enhanced
+! TEST-ERROR: branch.*(SELECT GENERIC|construct)|target.*outside.*construct
+! TEST-ERROR-PHASE: compile
 ! Invalid: 11.1.10.2. A branch to END SELECT is allowed only from inside
 ! the construct. This is not a numbered constraint; the suite still rejects it.
 module branch_into_select_m
@@ -5,6 +9,7 @@ module branch_into_select_m
 contains
   generic subroutine s(x)
     integer, rank(0:1) :: x
+    ! TEST-ERROR-HERE
     go to 100
     gr: select generic rank (x)
     rank (0) gr

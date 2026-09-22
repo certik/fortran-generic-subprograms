@@ -1,10 +1,10 @@
+! TEST-RULE: R704 R708 C718 C801 C802 15.6.2.4
+! TEST-REQUIRES: int32
 ! A scalar kind is an ordinary type, not a type-generic dummy.
-! CHARACTER(LEN=*) with no kind array is ordinary assumed-length character.
-! The generic parse of those spellings is not used: INTEGER(INT32) is the
-! long-standing kind selector, and CHARACTER(LEN=*) is the long-standing
-! assumed-length specifier. SELECT GENERIC TYPE on either is rejected by
-! the invalid_compile_time tests select_on_scalar_kind and
-! select_on_assumed_character.
+! INTEGER(INT32) cannot use the generic parse because C718 requires a rank-one
+! kind expression. CHARACTER(LEN=*) is deliberately used only where the
+! ordinary/generic parse does not affect the result; interpretation-dependent
+! selection is isolated in draft_interpretations/valid.
 module ordinary_scalar_kind_m
   use, intrinsic :: iso_fortran_env, only: int32
   implicit none
@@ -28,7 +28,7 @@ program ordinary_scalar_kind_p
   use, intrinsic :: iso_fortran_env, only: int32
   use ordinary_scalar_kind_m
   implicit none
-  if (int32 <= 0) error stop "need int32"
+  if (int32 < 0) error stop "need int32"
   if (mix("abcd", 3_int32, 10) /= 17) error stop "integer"
   if (mix("ab", 1_int32, 0.5) /= 4) error stop "real"
   if (mix("", 0_int32, 1) /= 1) error stop "empty"

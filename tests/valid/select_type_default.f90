@@ -1,3 +1,4 @@
+! TEST-RULE: R705 R1155 R1157 11.1.11.2
 ! DECLARED TYPE DEFAULT, and a specific for which no guard matches
 ! (11.1.11). The real specific of unmarked contains no block; y stays 0.
 module select_type_default_m

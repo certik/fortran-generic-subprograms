@@ -1,3 +1,5 @@
+! TEST-RULE: R705 R707 R708 R831 R832 7.3.2.2 8.5.17 11.1.10 11.1.11
+! TEST-REQUIRES: int32
 ! After duplicate removal a single combination is still generic, because
 ! genericity is syntactic (7.3.2.2 p3, 8.5.17 p2). SELECT GENERIC is therefore
 ! legal on TYPE(INTEGER, INTEGER), on a one-element kind array, and on RANK(2, 2).
@@ -44,7 +46,7 @@ program duplicates_remain_generic_p
   use duplicates_remain_generic_m
   implicit none
   integer :: a(2, 2)
-  if (int32 <= 0) error stop "need int32"
+  if (int32 < 0) error stop "need int32"
   if (inc_dup_type(4) /= 5) error stop "duplicate type list"
   if (inc_one_kind(4_int32) /= 5_int32) error stop "one-element kind array"
   a = reshape([7, 8, 9, 10], [2, 2])

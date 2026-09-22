@@ -1,21 +1,23 @@
+! TEST-RULE: C1161
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: C1161|duplicate.*(type|guard)|same type.*more than one
+! TEST-ERROR-PHASE: compile
 ! Invalid: C1161. The same type and kind type parameters in two guards.
-! The length parameter does not distinguish them.
 module pdt_guard_duplicate_m
-  use, intrinsic :: iso_fortran_env, only: int32, int64
   implicit none
-  type :: u(k, n)
+  type :: u(k)
     integer, kind :: k
-    integer, len :: n
-    integer(k) :: v(n)
+    integer(k) :: v
   end type
 contains
   generic subroutine s(x)
-    type(u(k=[int32, int64], n=*)), intent(inout) :: x
+    type(u(k=[kind(0)])), intent(inout) :: x
     select generic type (x)
-    declared type is (u(k=int32, n=*))
-      x%v = 1_int32
-    declared type is (u(k=int32, n=*))
-      x%v = 2_int32
+    declared type is (u(k=kind(0)))
+      x%v = 1
+    ! TEST-ERROR-HERE
+    declared type is (u(k=kind(0)))
+      x%v = 2
     end select
   end subroutine
 end module

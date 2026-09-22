@@ -1,3 +1,4 @@
+! TEST-RULE: R831 R832 R833 R1150 R1152 11.1.10.2
 ! A rank that matches no guard, and no RANK DEFAULT, selects nothing
 ! (11.1.10.2). A guard rank outside the dummy's set never matches. That
 ! block is deleted from every specific, so it may use syntax that is illegal

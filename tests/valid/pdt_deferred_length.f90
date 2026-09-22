@@ -1,6 +1,9 @@
-! A deferred length parameter is written "n=:" (C722). The type guard still
-! spells that length as assumed, "n=*" (C1160). Kind parameters in the guard
-! are written in full.
+! TEST-RULE: R712 R713 R714 C717 C722 C723 7.2 15.6.2.4
+! TEST-REQUIRES: int32 int64
+! A deferred length parameter is written "n=:" (C722). This settled core
+! exercises deferred-length allocatable dummies without an assumed-length
+! generic type guard; that interpretation-dependent guard is isolated in
+! draft_interpretations/valid.
 module pdt_deferred_length_m
   use, intrinsic :: iso_fortran_env, only: int32, int64
   implicit none
@@ -11,15 +14,8 @@ module pdt_deferred_length_m
   end type
 contains
   generic subroutine fill(x)
-    type(u(k=[int32, int64], n=:)), allocatable, intent(out) :: x
-    select generic type (x)
-    declared type is (u(k=int32, n=*))
-      allocate(u(int32, 4) :: x)
-      x%v = 4_int32
-    declared type is (u(k=int64, n=*))
-      allocate(u(int64, 5) :: x)
-      x%v = 5_int64
-    end select
+    type(u(k=[int32, int64], n=:)), allocatable, intent(inout) :: x
+    x%v = int(x%n, kind=kind(x%v))
   end subroutine
 end module
 
@@ -29,7 +25,9 @@ program pdt_deferred_length_p
   implicit none
   type(u(k=int32, n=:)), allocatable :: a
   type(u(k=int64, n=:)), allocatable :: b
-  if (int32 <= 0 .or. int64 <= 0) error stop "need int32 and int64"
+  if (int32 < 0 .or. int64 < 0) error stop "need int32 and int64"
+  allocate(u(int32, 4) :: a)
+  allocate(u(int64, 5) :: b)
   call fill(a)
   call fill(b)
   if (.not. allocated(a)) error stop "int32 allocated"

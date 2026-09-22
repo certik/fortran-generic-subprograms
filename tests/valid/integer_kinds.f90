@@ -1,5 +1,6 @@
+! TEST-RULE: R707 R708 C718 15.6.2.4
+! TEST-REQUIRES: int32 int64
 ! INTEGER(INTEGER_KINDS) and INTEGER(KIND=[INT32, INT64]) (7.3.2.2, C718).
-! Assumes INT32 and INT64 are supported kinds.
 module integer_kinds_m
   use, intrinsic :: iso_fortran_env, only: integer_kinds, int32, int64
   implicit none
@@ -30,8 +31,8 @@ program integer_kinds_p
   use, intrinsic :: iso_fortran_env, only: int32, int64
   use integer_kinds_m
   implicit none
-  ! These ranges are supported on every processor: a kind with decimal range
-  ! at least 18 is required, and any smaller request returns some positive kind.
+  ! These ranges are supported on every processor. A supported kind value can
+  ! be zero; only a negative result denotes an unsupported request.
   ! A literal such as 1_int8 is not portable: INT8 may be negative, and a
   ! kind parameter that does not exist is a constraint violation even in a
   ! branch the program never takes.
@@ -39,8 +40,8 @@ program integer_kinds_p
   integer, parameter :: k4 = selected_int_kind(4)
   integer, parameter :: k9 = selected_int_kind(9)
   integer, parameter :: k18 = selected_int_kind(18)
-  if (int32 <= 0 .or. int64 <= 0) error stop "need int32 and int64"
-  if (k2 <= 0 .or. k4 <= 0 .or. k9 <= 0 .or. k18 <= 0) error stop "selected_int_kind"
+  if (int32 < 0 .or. int64 < 0) error stop "need int32 and int64"
+  if (k2 < 0 .or. k4 < 0 .or. k9 < 0 .or. k18 < 0) error stop "selected_int_kind"
   if (plus1(5) /= 6) error stop "default integer"
   if (plus1(5_int32) /= 6_int32) error stop "int32"
   if (plus1(5_int64) /= 6_int64) error stop "int64"

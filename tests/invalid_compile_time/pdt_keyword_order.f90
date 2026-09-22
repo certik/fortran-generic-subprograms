@@ -1,3 +1,7 @@
+! TEST-RULE: C720
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: C720|keyword.*preceding|type parameter.*keyword
+! TEST-ERROR-PHASE: compile
 ! Invalid: C720. Once a type-parameter keyword is used, the rest use keywords.
 module pdt_keyword_order_m
   implicit none
@@ -8,6 +12,7 @@ module pdt_keyword_order_m
   end type
 contains
   generic subroutine s(x)
-    type(t(k1=[1, 2], [1, 2], n=*)) :: x
-  end subroutine
-end module
+      ! TEST-ERROR-HERE
+      type(t(k1=[kind(0)], [kind(0)], n=*)) :: x
+    end subroutine
+  end module

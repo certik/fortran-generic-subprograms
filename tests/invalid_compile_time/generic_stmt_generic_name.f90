@@ -1,7 +1,12 @@
+! TEST-RULE: C1512
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: C1512|generic name.*specific|specific.*generic name
+! TEST-ERROR-PHASE: compile
 ! Invalid: C1512. A GENERIC statement shall not give a generic name another
 ! generic name as a specific.
 module generic_stmt_generic_name_m
   implicit none
+  ! TEST-ERROR-HERE
   generic :: g => f
 contains
   generic subroutine f(x)

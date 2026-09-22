@@ -1,6 +1,6 @@
-! TYPE(INTEGER, REAL, COMPLEX) and TYPE(INTEGER, CHARACTER(LEN=*)).
-! Unselected blocks are deleted: CONJG is only in the complex specific,
-! LEN is only in the character specific (7.3.2.2, 11.1.11, 15.6.2.4).
+! TEST-RULE: R705 R706 C716 11.1.11 15.6.2.4
+! TYPE(INTEGER, REAL, COMPLEX). Unselected blocks are deleted: CONJG is only
+! in the complex specific, so every retained block is valid for its specific.
 module intrinsic_types_m
   implicit none
 contains
@@ -27,17 +27,6 @@ contains
       y = abs(conjg(x))
     end select
   end function
-
-  generic function tag_ic(x) result(n)
-    type(integer, character(len=*)), intent(in) :: x
-    integer :: n
-    select generic type (x)
-    declared type is (integer)
-      n = 1
-    declared type is (character(len=*))
-      n = len(x)
-    end select
-  end function
 end module
 
 program intrinsic_types_p
@@ -50,6 +39,4 @@ program intrinsic_types_p
   if (classify(z) /= 3) error stop "classify complex"
   if (mag(3.0) /= 3.0) error stop "mag real"
   if (mag(z) /= abs(conjg(z))) error stop "mag complex"
-  if (tag_ic(5) /= 1) error stop "tag integer"
-  if (tag_ic("abcd") /= 4) error stop "tag character"
 end program

@@ -1,10 +1,14 @@
-! Invalid syntax. The kind set is one rank-one expression, written
-! INTEGER([INT32, INT64]), not INTEGER(INT32, INT64).
+! TEST-RULE: R708
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: generic intrinsic kind.*array|kind.*rank.one|unexpected.*comma
+! TEST-ERROR-PHASE: compile
+! Invalid syntax. The kind set is one rank-one expression, written with an
+! array constructor, not as two comma-separated selector arguments.
 module kind_list_not_array_m
-  use, intrinsic :: iso_fortran_env, only: int32, int64
   implicit none
 contains
   generic subroutine s(x)
-    integer(int32, int64) :: x
+    ! TEST-ERROR-HERE
+    integer(kind(0), kind(0)) :: x
   end subroutine
 end module

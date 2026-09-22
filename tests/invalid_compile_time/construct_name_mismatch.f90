@@ -1,3 +1,7 @@
+! TEST-RULE: C1158
+! TEST-DIAGNOSTIC-CLASS: required
+! TEST-ERROR: C1158|END SELECT.*construct name|construct name.*mismatch
+! TEST-ERROR-PHASE: compile
 ! Invalid: C1158. END SELECT must repeat the construct name.
 module construct_name_mismatch_m
   implicit none
@@ -9,6 +13,7 @@ contains
       x = 0
     rank (1) gr
       x = 1
+    ! TEST-ERROR-HERE
     end select other
   end subroutine
 end module

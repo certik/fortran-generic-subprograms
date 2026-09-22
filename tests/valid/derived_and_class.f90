@@ -1,3 +1,4 @@
+! TEST-RULE: R705 C715 C716 R1155 R1157 7.3.3 11.1.11
 ! TYPE of a parent and its extension is distinguishable.
 ! CLASS of two unrelated types is distinguishable; the guard sees the declared
 ! type, and SELECT TYPE inside it sees the dynamic type (7.3.3, 11.1.11).

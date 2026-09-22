@@ -1,3 +1,5 @@
+! TEST-RULE: R708 R710 R711 C717 C718 7.3.2.1 15.6.2.4
+! TEST-REQUIRES: ascii
 ! CHARACTER(LEN=*, KIND=CHARACTER_KINDS) and deferred length (C717).
 ! KIND(s) in a kind selector is a constant expression inside each specific.
 module character_kinds_m
@@ -21,17 +23,6 @@ contains
     s = "hi"
   end subroutine
 
-  generic function is_default_kind(s) result(ans)
-    character(len=*, kind=character_kinds), intent(in) :: s
-    logical :: ans
-    select generic type (s)
-    declared type is (character(len=*, kind=kind("A")))
-      ans = .true.
-    declared type default
-      ans = .false.
-    end select
-  end function
-
   ! TYPEOF of an assumed-length character takes that length. The result is
   ! not itself assumed-length (7.3.2.1 p3). An assumed-length function result
   ! is not allowed here, so a successful return is the check.
@@ -54,11 +45,10 @@ program character_kinds_p
   implicit none
   integer, parameter :: ascii = selected_char_kind("ASCII")
   character(kind=ascii, len=2) :: sa
-  character(len=:), allocatable :: d
+  character(len=:), allocatable :: d, copied
   if (len_of("hello") /= 5) error stop "len"
   if (len_of("") /= 0) error stop "len empty"
   if (dub("ab") /= "abab") error stop "dub"
-  if (.not. is_default_kind("a")) error stop "default kind guard"
   call set_msg(d)
   if (.not. allocated(d)) error stop "deferred allocated"
   if (d /= "hi") error stop "deferred value"
@@ -69,10 +59,14 @@ program character_kinds_p
   if (len(same("")) /= 0) error stop "typeof empty"
   if (kind(same("ab")) /= kind("A")) error stop "typeof kind"
   d = "xyz"
-  if (.not. allocated(clone(d))) error stop "clone allocated"
+  copied = clone(d)
+  if (.not. allocated(copied)) error stop "clone assignment allocated"
+  if (copied /= "xyz") error stop "clone assignment value"
+  if (len(copied) /= 3) error stop "clone assignment length"
   if (clone(d) /= "xyz") error stop "clone value"
   if (len(clone(d)) /= 3) error stop "clone keeps deferred length"
-  if (ascii <= 0) error stop "ASCII character kind"
+  if (kind(clone(d)) /= kind(d)) error stop "clone keeps deferred kind"
+  if (ascii < 0) error stop "ASCII character kind"
   sa = "ab"
   if (len_of(sa) /= 2) error stop "ascii len"
   if (same(sa) /= sa) error stop "ascii typeof"

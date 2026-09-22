@@ -1,3 +1,4 @@
+! TEST-RULE: C1511 C1513 15.4.3.4.5 15.6.2.4 NOTE4
 ! Specifics from an interface and from several generic subprograms of the
 ! same name form one generic (15.6.2.4 NOTE 4). Ranks and types disambiguate.
 module extend_generic_m
