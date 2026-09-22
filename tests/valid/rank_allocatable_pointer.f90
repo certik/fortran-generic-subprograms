@@ -27,6 +27,15 @@ contains
     integer, target, rank(rank(p)) :: t
     p => t
   end subroutine
+
+  ! A pointer dummy is deferred-shape: it keeps the actual pointer's bounds,
+  ! including a lower bound other than 1 (8.5.8.4).
+  generic subroutine pointer_bounds(p, lb1, ub1)
+    integer, pointer, intent(in), rank(1:2) :: p
+    integer, intent(out) :: lb1, ub1
+    lb1 = lbound(p, 1)
+    ub1 = ubound(p, 1)
+  end subroutine
 end module
 
 program rank_alloc_ptr_p
@@ -52,4 +61,22 @@ program rank_alloc_ptr_p
   if (.not. associated(pv, vec)) error stop "pointer rank1"
   if (.not. associated(pm, mat)) error stop "pointer rank2"
   if (pv(2) /= 2 .or. pm(1, 2) /= 3) error stop "pointer values"
+
+  block
+    integer, target :: storage(0:4)
+    integer, target :: grid(-2:0, 4:5)
+    integer, pointer :: incoming(:)
+    integer, pointer :: incoming2(:, :)
+    integer :: lb, ub
+    storage = [1, 2, 3, 4, 5]
+    incoming => storage
+    call pointer_bounds(incoming, lb, ub)
+    if (lb /= 0 .or. ub /= 4) error stop "pointer rank1 bounds"
+    if (incoming(0) /= 1) error stop "pointer rank1 value"
+    grid = 7
+    incoming2 => grid
+    call pointer_bounds(incoming2, lb, ub)
+    if (lb /= -2 .or. ub /= 0) error stop "pointer rank2 bounds"
+    if (lbound(incoming2, 2) /= 4) error stop "pointer rank2 lbound2"
+  end block
 end program

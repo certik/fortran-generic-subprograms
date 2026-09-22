@@ -26,6 +26,7 @@ contains
   generic function sumc(x) result(s)
     integer, contiguous, rank(1:2), intent(in) :: x
     integer :: s
+    if (.not. is_contiguous(x)) error stop "contiguous dummy"
     s = sum(x)
   end function
 

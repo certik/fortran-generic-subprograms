@@ -16,7 +16,7 @@ The meaning of the subprogram is the full set. There is one specific procedure f
 
 A dummy whose type, kind, or rank is declared *from* another dummy (`TYPEOF`, `CLASSOF`, `KIND`, `RANK(RANK(...))`) is not itself generic, and it does not add a factor to the product.
 
-The standard does not prescribe an object-file strategy. In theory a compiler could emit code only for combinations that are referenced. In practice a module procedure can be use-associated from a program that the compiler of the module cannot see, so implementations are expected to generate every specific when the module is compiled. An unused specific still has to be a legal procedure. The test `tests/invalid/mod_requires_same_kind.f90` is nonconforming even though nothing calls it.
+The standard does not prescribe an object-file strategy. In theory a compiler could emit code only for combinations that are referenced. In practice a module procedure can be use-associated from a program that the compiler of the module cannot see, so implementations are expected to generate every specific when the module is compiled, or to be able to recreate any of them from what the module file retains. An unused specific still has to be a legal procedure. The test `tests/invalid_compile_time/mod_requires_same_kind.f90` is nonconforming even though nothing calls it. `tests/valid/separate_compilation/` compiles the module before it compiles the program that calls it.
 
 **Is `SELECT GENERIC RANK` / `SELECT GENERIC TYPE` always compile time?**
 
@@ -47,6 +47,18 @@ end function
 ```
 
 `RANK(0)` is a single rank, so `x` is not rank-generic. `square` is still a generic name.
+
+The result above is a scalar declared without a `RANK` clause. C877 allows a `RANK` clause only on a named constant, a dummy data object, or an allocatable or pointer. NOTE 7 writes `TYPEOF(x), RANK(RANK(x)) :: square` and NOTE 8 writes `REAL, RANK(RANK(a)) :: b` for a function result. Both violate C877. See [Wording issues](#wording-issues).
+
+## Resolving a reference
+
+15.6.2.4 makes the subprogram name the generic identifier of the generated specifics. A reference is resolved with the usual generic rules (15.5.5.2, 15.4.3.4.5), as if those specifics had been listed in a generic interface block and then had their names hidden. Inside the subprogram, a reference to the function name (when `RESULT` is used) or a recursive subroutine call is a generic reference. `factorial(n-1)` selects the specific whose type and kind match `n-1`. One specific may call a different specific of the same name.
+
+15.5.5.1 was not edited to list generic subprograms among the ways a name is established to be generic, and 15.5.5.2 still says "the specific procedure in the interface block." 15.2.2.2 still says a subprogram defines one procedure. Those sentences lose to 15.6.2.4: the name is generic, the specifics are unnamed, and no specific name is visible.
+
+A generic subprogram whose name is already the generic name of an intrinsic extends that intrinsic. A reference that matches one of its specifics calls that specific. A reference that matches none of them, and matches the intrinsic, calls the intrinsic (15.4.3.4.5 paragraph 8, 15.5.5.2 paragraph 5).
+
+Each specific is a separate procedure. It has its own instances, its own saved local variables, and its own copy of each internal procedure (15.6.2.5). A `SAVE` local is not shared across kinds or ranks. An implementation that keeps one procedure and a hidden parameter would share that `SAVE` and would be wrong.
 
 ## Where the prefix may appear
 
@@ -117,6 +129,8 @@ The `int-constant-expr` in a `generic-intrinsic-type-spec` is a rank-one array (
 
 `CHARACTER` must state an assumed (`*`) or deferred (`:`) length. `CHARACTER(LEN=10, KIND=CHARACTER_KINDS)` is illegal (C717). So is a `*char-length` on the entity that is not `*` or `:` (C804). A `*char-length` is allowed only when every type in the spec is character (C803).
 
+`CHARACTER(LEN=*)`, `CHARACTER(*)`, and `CHARACTER(LEN=*, KIND=1)` match both an ordinary character specifier and `generic-intrinsic-type-spec`. The ordinary reading is the one that keeps existing Fortran valid. They are not type-generic, and `SELECT GENERIC TYPE` on them is illegal. A kind expression of rank one, such as `CHARACTER(LEN=*, KIND=CHARACTER_KINDS)`, matches only the generic production (an ordinary kind selector is scalar) and is type-generic. The same split applies to `INTEGER(INT32)` versus `INTEGER([INT32])`: a scalar kind is the ordinary selector, and C718 rejects that scalar as a generic kind expression.
+
 `CLASS(...)` may list only extensible types (C715). Intrinsic types, enum types, and enumeration types are not extensible, so they cannot appear in `CLASS(...)`.
 
 A `generic-type-specifier-list` that contains **no** kind-generic specifier must contain **more than one** specifier (C716). Consequences:
@@ -124,6 +138,7 @@ A `generic-type-specifier-list` that contains **no** kind-generic specifier must
 | Written form | What it is |
 | --- | --- |
 | `integer` | Declaration type. Not generic. |
+| `integer(int32)` | Ordinary scalar kind selector. Not type-generic. `SELECT GENERIC TYPE` is illegal. |
 | `integer([int32, int64])` | Type-generic. One specifier, and it is kind-generic, so C716 does not require a second item. |
 | `integer([int32])` | Type-generic, with a single combination. `SELECT GENERIC TYPE` is still allowed. |
 | `type(integer)` | Ordinary `declaration-type-spec` (`TYPE(intrinsic-type-spec)`). The generic-list reading is forbidden by C716 because the only specifier is not kind-generic. Not a type-generic dummy. |
@@ -132,6 +147,11 @@ A `generic-type-specifier-list` that contains **no** kind-generic specifier must
 | `class(point)` | Ordinary polymorphic dummy. Not type-generic. |
 | `class(point, circle)` | Type-generic, provided both types are extensible and neither specific is TKR-compatible with the other (see [Distinguishability](#distinguishability)). |
 | `type(t(k=[int32, int64], n=*))` | Type-generic parameterized type. The single specifier is kind-generic. |
+| `type(t(k=1, n=*))` | Ordinary parameterized type. Every kind parameter is scalar, so this is not a `generic-derived-type-spec`. |
+| `character(len=*)` | Ordinary assumed-length character. Not type-generic. |
+| `character(len=*, kind=1)` | Ordinary. The generic parse violates C718 because the kind is scalar. |
+| `character(len=*, kind=character_kinds)` | Type-generic. The kind expression is rank one, so only the generic production matches. |
+| `character(*)` | Ordinary assumed length, same as `character(len=*)`. |
 
 Duplicate kind values in one kind array are kept as a single value (7.3.2.2 p2). Duplicate type/kind combinations in one `generic-type-spec` are likewise collapsed (p3). The dummy **stays generic** even if one combination remains. `TYPE(REAL(REAL64), DOUBLE PRECISION)` is one combination on a processor where those kinds are equal, and two combinations otherwise. Both spellings remain valid actual arguments.
 
@@ -145,7 +165,7 @@ gen-tp-value              is int-constant-expr
                           or :
 ```
 
-The type must have at least one kind type parameter (C719). A length parameter's value must be `*` or `:`, and a kind parameter's value must be a scalar or a rank-one array (C722). At least one kind parameter must be a rank-one array (C723); a scalar kind is a fixed value, not a factor that can be omitted to dodge that rule. Keywords follow the usual "once you use a keyword, keep using them" rule (C720).
+The type must have at least one kind type parameter (C719). A length parameter's value must be `*` or `:`, and a kind parameter's value must be a scalar or a rank-one array (C722). At least one kind parameter must be a rank-one array (C723); a scalar kind is a fixed value, not a factor that can be omitted to dodge that rule. Each type parameter appears at most once, and a parameter with no default has to appear (C721). Keywords follow the usual "once you use a keyword, keep using them" rule (C720).
 
 A specification in which every kind parameter is a scalar is an ordinary derived-type spec, not a generic one. An ordinary type-parameter value is scalar, so the generic form is the one that uses a rank-one array for at least one kind parameter. `TYPE(T(K=1, N=*))` is one ordinary parameterized type. `TYPE(T(K=[1, 2], N=*))` is generic.
 
@@ -184,10 +204,12 @@ A `RANK` clause is **generic** when it has a range or more than one `rank-spec` 
 | `RANK(0, 2, 4)` | Yes | 0, 2, 4 |
 | `RANK(1:3, 7)` | Yes | 1, 2, 3, 7 |
 | `RANK(0:MAX_RANK())` | Yes | every rank the processor supports for a non-coarray |
+| `RANK(2:2)` | Yes | only 2. A range is generic even when the two ends are equal. |
+| `RANK(1:0)` | Invalid | the range names no rank. A rank-generic dummy has to have at least one rank after expansion. |
 | `RANK(1:)` | Not a legal rank-spec | both ends of a range are required |
 | `RANKOF(x)` | Not in the draft | write `RANK(RANK(x))` |
 
-Each bound is a nonnegative integer constant expression, at most the processor's maximum rank for the corank of the entity (C875). `ISO_FORTRAN_ENV`'s `MAX_RANK([CORANK])` is that inquiry. Duplicate ranks in the list are ignored (8.5.17 p4).
+Each bound is a nonnegative integer constant expression, at most the processor's maximum rank for the corank of the entity (C875). `ISO_FORTRAN_ENV`'s `MAX_RANK([CORANK])` is that inquiry. `RANK(0:MAX_RANK()+1)` is illegal. With a corank, the portable upper bound is `RANK(0:MAX_RANK(corank))`, and every rank in the set also has to satisfy C826 (rank + corank ≤ 15) on a processor that enforces that limit. Duplicate ranks in the list are ignored (8.5.17 p4). A range whose first bound is greater than its second, such as `RANK(1:0)`, names no rank. That declaration is rejected: a rank-generic dummy has to contribute at least one rank. The draft has no numbered constraint for the empty range.
 
 A generic `RANK` clause gives the entity the `DIMENSION` attribute. The entity declaration itself must not also carry an `array-spec` (C876), so `rank(1:2) :: x(:)` is illegal. Rank 0 is scalar. A positive rank means:
 
@@ -213,7 +235,7 @@ These take a property from a generic dummy. They do not add combinations.
 
 `TYPEOF` / `CLASSOF` of a whole generic dummy is the intended way to say "same type as that argument". The draft dropped the paper's extra constraints on what a kind selector may reference; under 15.6.2.4 p2 the body is checked **after** each generic dummy has been given a concrete type, kind, and rank, so `KIND(x)` and `RANK(x)` are ordinary inquiries in that specific.
 
-A function result and a local variable are never generic dummies (they are not dummy data objects). A nonzero rank on a function result or local that is not allocatable and not a pointer is described by 8.5.17 p3 as assumed-shape, but an assumed-shape array has to be a dummy (8.5.8.3). The tests therefore give such results and locals the `ALLOCATABLE` attribute. See [Wording issues](#wording-issues).
+A function result and a local variable are never generic dummies (they are not dummy data objects). C877 is stricter than the assumed-shape wording: any `RANK` clause, including `RANK(0)` and `RANK(RANK(x))`, is allowed only on a named constant, a dummy data object, or an allocatable or pointer. A function result or local that needs a rank copies it with `ALLOCATABLE` or `POINTER`, as in `integer, allocatable, rank(rank(x)) :: y`. A scalar result is declared with no `RANK` clause at all. 8.5.17 paragraph 3 also describes a positive rank without those attributes as assumed-shape, and an assumed-shape array has to be a dummy (8.5.8.3). NOTE 7 and NOTE 8 both put a `RANK` clause on a function result and are not valid under C877. See [Wording issues](#wording-issues).
 
 ## How the specifics are built
 
@@ -342,7 +364,7 @@ end function
 
 Overlapping guards (`RANK(1:2)` and `RANK(2:3)` in one construct) are not given an explicit constraint, unlike `SELECT RANK`'s C1166. 11.1.10.2 still says each specific contains **at most one** block. A rank that matches two guards has no conforming interpretation. The tests treat that program as invalid.
 
-A guard list that mentions a rank outside the dummy's set simply never matches. That is allowed, by the same rule that "no guard matched" is allowed.
+A guard list that mentions a rank outside the dummy's set simply never matches. That is allowed, by the same rule that "no guard matched" is allowed. The unmatched block is deleted from every specific before conformance is checked, so it may contain code that would be illegal for every rank the dummy actually has. `tests/valid/select_rank_gaps.f90` covers both.
 
 ## `SELECT GENERIC TYPE`
 
@@ -375,7 +397,7 @@ If the type has length parameters, every one of them must be assumed in the guar
 
 The same declared type and the same kind type parameter values must not appear in two guards (C1161). At most one default (C1162). Construct names work as for the rank construct (C1163).
 
-The match uses the **declared type and kind type parameters** of the selector, never the dynamic type and never a length (11.1.11.2). There is no `CLASS IS` guard and no match of extensions. `DECLARED TYPE IS (REAL)` matches default real only. `DECLARED TYPE IS (INTEGER)` matches default integer only, not `INTEGER(INT64)`.
+The match uses the **declared type and kind type parameters** of the selector, never the dynamic type and never a length (11.1.11.2). There is no `CLASS IS` guard and no match of extensions. `DECLARED TYPE IS (REAL)` matches default real only. `DECLARED TYPE IS (INTEGER)` matches default integer only, not `INTEGER(INT64)`. `tests/valid/declared_type_default_kind.f90` calls both the default kind and another kind.
 
 If the dummy was declared `CLASS(...)`, the specific is polymorphic, but the guard still sees the declared type that this specific was generated for. The dynamic type may be an extension of that declared type. Inspecting the dynamic type is what runtime `SELECT TYPE` is for, and it may appear **inside** the selected block:
 
@@ -408,6 +430,7 @@ Anything that is legal for every specific (or legal inside the blocks that those
 - An internal procedure of a generic subprogram is cloned with each specific. It may use `TYPEOF` of a host generic dummy. It must not itself be generic.
 - The subprogram may be `PURE` or `SIMPLE` when each specific is. `ELEMENTAL` is allowed when each specific meets 15.9.1 (scalar nonallocatable nonpointer noncoarray dummies, scalar result, intents present). An elemental specific is still elemental: an array actual is an elemental reference, not a generic-rank match. Generic rank and elemental rank are different mechanisms.
 - Host association, use association, `BLOCK`, and specification expressions work as they do inside the specific you would have written by hand.
+- A saved local is per specific. Calling the integer specific does not advance a `SAVE` counter in the real specific.
 
 ## Joining a generic set
 
@@ -476,7 +499,20 @@ contains
 end submodule
 ```
 
-Both the interface body and the defining subprogram carry `MODULE` and `GENERIC` (15.4.3.2 p4). The characteristics and dummy names match, as for any separate module procedure (C1561).
+Both the interface body and the defining subprogram carry `MODULE` and `GENERIC` (15.4.3.2 p4). The characteristics and dummy names match, as for any separate module procedure (C1561). For a generic, that means both sides expand to the same set of specifics: the same types, kinds, and ranks, and the same dependent declarations. Dropping `GENERIC` or `MODULE` on the defining subprogram does not define that generic separate module procedure. `GENERIC` without `MODULE` is otherwise allowed on a module procedure that is not a separate module procedure, including one written directly in a submodule.
+
+A `GENERIC` subprogram may also be an ordinary module procedure of a submodule. It is then visible to the other module procedures of that submodule. It is use-associated from outside only when a separate-module interface in the ancestor module publishes it.
+
+## What the generic name is not
+
+The specifics have no names. The generic name cannot be used where a specific procedure is required.
+
+- It is not an actual argument (C1537) and not a procedure-pointer target (10.2.2.4). That includes a generic subprogram with no generic dummy, whose single specific is still unnamed (15.6.2.4 NOTE 7).
+- It is not a type-bound procedure (C798). A type-bound `GENERIC` statement names specific bindings of that type, not a generic subprogram.
+- `MODULE PROCEDURE` shall not name it (C1510). `PROCEDURE` without `MODULE`, and a `GENERIC` statement, may name it when the generic specification is an operator, assignment, or defined input/output. They shall not name it when the generic specification is another generic name (C1505, C1512). Defined input/output adds every specific, and each specific has to have the `dtv` interface in 12.6.4.8.2. An extensible `dtv` type uses `CLASS` (C1236).
+- `BIND(C)` is rejected on the subroutine or function statement. A binding label names one procedure. A generic subprogram does not have one specific procedure under that label, including when the cross product has a single specific. The draft does not say this in a numbered constraint.
+
+`PROCEDURE_NAME` from `ISO_FORTRAN_ENV` is Unresolved Technical Issue 031 in 26-007r1. The specifics are anonymous, and the draft does not say what the intrinsic returns inside a generic subprogram. This suite does not require a particular result.
 
 ## Distinguishability
 
@@ -486,7 +522,7 @@ Two data dummies are distinguishable when neither is TKR-compatible with the oth
 
 Polymorphic dummies are not symmetric. `CLASS(base)` is type-compatible with `CLASS(extended)` when `extended` extends `base`, so those two specifics are **not** distinguishable. `CLASS(left, right)` is legal only when neither type is compatible with the other: typically two unrelated extensible types. `TYPE(base, extended)` is legal because `TYPE` is not polymorphic.
 
-Elemental specifics are distinguished as if they were scalar. An array actual can still be an elemental reference, and if both an elemental and a nonelemental specific seem to match, the nonelemental one is chosen (C.10.6 p5). This suite does not rely on that tie-break.
+Elemental specifics are distinguished as if they were scalar. An array actual can still be an elemental reference, and if both an elemental and a nonelemental specific seem to match, the nonelemental one is chosen (15.5.5.2 paragraphs 1–2, C.10.6 paragraph 5). `tests/valid/elemental_tie_break.f90` is that case: a rank-1 actual selects the nonelemental rank-1 specific, and a rank-2 actual falls through to the elemental specific.
 
 ## Worked examples
 
@@ -577,11 +613,11 @@ contains
 end module
 ```
 
-The caller writes `2 .twice.` and does not need access to `dbl`.
+The caller writes `.twice. 2`. A defined unary operator is a prefix operator. The caller does not need access to `dbl`.
 
 ## Constraint checklist
 
-Checked by `tests/invalid/` unless noted.
+Checked by `tests/invalid_compile_time/` unless noted. A few rows are requirements the draft states with "shall" but does not number as constraints. Fortran requires a diagnostic for numbered syntax rules and constraints (4.2). This suite also requires a diagnostic for the unnumbered rows, so a compiler that accepts those programs fails the suite.
 
 | Rule | Statement |
 | --- | --- |
@@ -589,28 +625,34 @@ Checked by `tests/invalid/` unless noted.
 | C802 | That declaration names one nonoptional dummy data object. Not a local, not a function result, not two names. |
 | C715 | `CLASS` lists only extensible types. |
 | C716 | A generic type list without a kind-generic specifier has at least two specifiers. |
-| C717, C804 | Character length in a generic spec is assumed or deferred. |
-| C718 | The kind expression is rank one. |
-| C719, C722, C723 | A generic derived type has a kind parameter, length parameters are `*` or `:`, and at least one kind parameter is a rank-one array. |
-| C875 | Rank bounds are in `0 .. max rank` for the entity's corank. |
+| C717, C804 | Character length in a generic spec is assumed or deferred. A `*char-length` of `*10` is illegal. |
+| C718 | The kind expression is rank one. A scalar kind is the ordinary selector instead. |
+| C719, C720, C721, C722, C723 | A generic derived type has a kind parameter, keywords stay in keyword form, each parameter appears once, length parameters are `*` or `:`, and at least one kind parameter is a rank-one array. |
+| C875 | Rank bounds are in `0 .. max rank` for the entity's corank. `MAX_RANK()+1` and `MAX_RANK(1)+1` are illegal. |
 | C876 | No `array-spec` on an entity with a generic `RANK` clause. |
+| C877 | A `RANK` clause is a named constant, a dummy, or allocatable or pointer. Not a function result or a plain local. |
 | C1155 | `SELECT GENERIC RANK` selects a rank-generic dummy. |
 | C1156 | At most one `RANK DEFAULT`. |
-| C1157, C1158, C1163 | Construct names match. |
-| C1159 | `SELECT GENERIC TYPE` selects a type-generic dummy. |
-| C1160 | Length parameters in a type guard are assumed. |
-| C1161 | A type and kind appear in at most one guard. |
+| C1157, C1158, C1163 | Construct names match, including a name on `END SELECT` or on a guard when `SELECT` has none. |
+| C1159 | `SELECT GENERIC TYPE` selects a type-generic dummy. Not `INTEGER(INT32)`, not `CHARACTER(LEN=*)`, not `CLASSOF`, not a scalar-kind parameterized type. |
+| C1160 | Length parameters in a type guard are assumed. `N=:` and `LEN=10` are illegal. |
+| C1161 | A type and kind appear in at most one guard. A length does not distinguish two guards. |
 | C1162 | At most one default type guard. |
 | C1564, C1582 | `GENERIC` only on a module or internal subprogram, or together with `MODULE` on a separate module procedure interface. |
+| C1561, 15.4.3.2 p4 | A generic separate module procedure is defined with both `MODULE` and `GENERIC`, and both sides expand to the same specifics. |
 | C1583 | No generic internal of a generic. |
 | C1584 | No asterisk dummy. |
 | C1585 | Dummy procedures have an explicit interface. |
 | C1589 | No `ENTRY`. |
 | 15.4.3.4.5 | Specifics that share a generic identifier are distinguishable. `CLASS` of a type and of its extension is not. |
-| 15.6.2.4 p2 | Every specific, after deletion of unselected blocks, conforms. `MOD` of independently generic kinds does not. |
-| C1505, C1512 | A generic name is not a specific of another generic name. |
-| C15135 | An elemental specific has scalar dummies. A generic rank that includes a positive rank cannot be elemental. |
-| 11.1.10.2 | A rank that matches two guards does not conform (no explicit constraint number; see wording issues). |
+| 15.6.2.4 p2 | Every specific, after deletion of unselected blocks, conforms. `MOD` of independently generic kinds does not. Not a numbered constraint. |
+| 15.6.2.1 p3 | `NON_RECURSIVE` forbids one specific from calling any specific of the same subprogram. Not a numbered constraint. |
+| C1505, C1512, C1510 | A generic name is not a specific of another generic name, and `MODULE PROCEDURE` shall not name a generic. |
+| C15135, C15136, C15137 | An elemental specific has scalar nonallocatable nonpointer dummies, a scalar nonallocatable nonpointer result, and intents on dummies that do not have `VALUE`. A generic rank that includes a positive rank cannot be elemental. |
+| 11.1.10.2 | A rank that matches two guards does not conform. A branch to `END SELECT` from outside the construct does not conform. Neither is a numbered constraint. |
+| Empty rank | `RANK(1:0)` is rejected. Not a numbered constraint. |
+| `BIND(C)` | Rejected on a generic subprogram. Not a numbered constraint. |
+| C1537, C798 | The generic name is not an actual argument, a procedure pointer target, or a type-bound procedure. |
 
 ## Changes since 25-156r1
 
@@ -635,12 +677,20 @@ These are defects or tensions in 26-007r1. The tests follow the reading in the r
 | Text | Reading used by the tests |
 | --- | --- |
 | C1162 says "TYPE DEFAULT", but R1157 and the examples say `DECLARED TYPE DEFAULT` / `DECLARED TYPE IS`. | The BNF is the syntax. `TYPE DEFAULT` and `TYPE IS` are rejected. |
-| 8.5.17 p3 says a positive rank with no `ALLOCATABLE` or `POINTER` is assumed-shape, including for function results and locals. 8.5.8.3 defines assumed-shape as a dummy. NOTE 8 writes `REAL, RANK(RANK(a)) :: b` for a function result whose rank can be positive. | Nonallocatable nonpointer function results and locals in the tests are scalar, or their rank comes from a non-generic `RANK(0)`. Array results and locals that follow a generic rank are `ALLOCATABLE`. The NOTE 8 declaration is not used as a test. |
+| 8.5.17 p3 says a positive rank with no `ALLOCATABLE` or `POINTER` is assumed-shape, including for function results and locals. 8.5.8.3 defines assumed-shape as a dummy. C877 allows a `RANK` clause only on a named constant, a dummy, or an allocatable or pointer. NOTE 7 writes `TYPEOF(x), RANK(RANK(x)) :: square` and NOTE 8 writes `REAL, RANK(RANK(a)) :: b`. | Both notes are rejected. A scalar result has no `RANK` clause. An array result or local whose rank follows a generic dummy is `ALLOCATABLE` or `POINTER`. |
 | `SELECT RANK` has C1166 (a rank value in at most one guard). `SELECT GENERIC RANK` does not, but 11.1.10.2 requires at most one block per specific. | Overlapping rank guards are invalid. |
-| The paper required a generic rank list to specify at least one rank. The draft does not. `RANK(1:0)` names no rank. | Not tested. Avoid empty ranges. |
-| C826 says rank + corank ≤ 15. The `MAX_RANK` examples also describe a processor whose maximum rank is 24. | No coarray tests. A generic rank plus a corank has to be legal for every rank in the set under whichever rule the processor implements. `MAX_RANK(corank)` is the portable upper bound. |
+| The paper required a generic rank list to specify at least one rank. The draft does not. `RANK(1:0)` names no rank. | Rejected. A rank-generic dummy has at least one rank after the range is expanded. |
+| C826 says rank + corank ≤ 15. The `MAX_RANK` examples also describe a processor whose maximum rank is 24. | Every rank in the set has to satisfy both C875 and C826. The portable declaration is `RANK(0:MAX_RANK(corank))`. `tests/valid/coarray_rank.f90` uses that. `RANK(0:MAX_RANK(1)+1)` is rejected. |
 | C716 makes `TYPE(integer)` and `TYPE(point)` illegal as one-item generic lists, while R704 also parses them as ordinary type specs. | They are ordinary types, not type-generic. A one-item list is generic only when that item is kind-generic (`TYPE(INTEGER([INT32]))`, `TYPE(T(K=[1,2], N=*))`). |
+| `CHARACTER(LEN=*)` and `CHARACTER(*)` match both an ordinary character specifier and `generic-intrinsic-type-spec`. `INTEGER(INT32)` matches both an ordinary kind selector and, except for C718, a generic kind expression. | The ordinary reading wins when it is valid. Those dummies are not type-generic. A rank-one kind expression is type-generic, because the ordinary selector does not match an array. |
+| 15.5.5.1 does not list a generic subprogram as establishing a generic name. 15.5.5.2 talks about an interface block. 15.2.2.2 says a subprogram defines one procedure. | 15.6.2.4 wins. The name is a generic identifier, resolution is ordinary generic resolution, and no specific name exists. |
+| `BIND(C)` is syntactically allowed on a subroutine or function statement that also has `GENERIC`. | Rejected, including when there is only one specific. One binding label cannot name the set. |
+| A guard may name a rank the dummy never has, and a specific may match no guard and have no `RANK DEFAULT`. | Both are valid. The unmatched block is deleted before conformance is checked, so it may contain code that would be illegal for every rank in the set. |
 
 ## Tests
 
-`tests/README.md` is the index. `tests/run.sh` compiles and runs `tests/valid`, expects `tests/runtime` to error-terminate, and expects `tests/invalid` to be rejected at compile time. Each valid program uses `error stop` for a failed check.
+The index is the root `README.md`. `tests/run.sh` compiles and runs `tests/valid`, expects `tests/invalid_runtime` to compile and then terminate with a nonzero status that is not a signal death, and expects `tests/invalid_compile_time` to be rejected while compiling or linking. Each valid program uses `error stop` for a failed check.
+
+`tests/valid/separate_compilation/` is two files. The runner compiles them separately, in lexical order, and then links. A directory of sources is one test. The `.f90` files inside it are not also run on their own.
+
+A kind literal such as `1_int8` is not used. `INT8` may be negative, and an unsupported kind is a constraint violation even in a branch the program never executes. Generics that should cover every processor kind are declared with `INTEGER_KINDS`, `REAL_KINDS`, `LOGICAL_KINDS`, or `CHARACTER_KINDS`. The programs call the kinds they can name portably: `SELECTED_INT_KIND` for ranges 2, 4, 9, and 18, the required `INT32` and `INT64`, `REAL32`, `REAL64`, default real, `SELECTED_REAL_KIND(6)`, default logical, `LOGICAL_KINDS(1)`, and `SELECTED_CHAR_KIND("ASCII")`. Ranks 0 through 15 are executed. Fifteen is the minimum value of `MAX_RANK()`. Higher ranks still have to be accepted; `RANK(0:MAX_RANK()+1)` is rejected.
