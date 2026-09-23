@@ -1,4 +1,5 @@
 ! TEST-RULE: C802 C1556 C1557 C1564 C15135 C15137 15.6.2.2 15.9
+! TEST-PASS: prefixes
 ! PURE, SIMPLE, NON_RECURSIVE, IMPURE ELEMENTAL, VALUE, CONTIGUOUS,
 ! OPTIONAL on a nongeneric dummy, typed results, and no-argument generics.
 module prefixes_m
@@ -86,12 +87,13 @@ end module
 program prefixes_p
   use prefixes_m
   implicit none
-  integer :: a(3), a_save(3), b(2, 2), v(6)
+  integer :: a(3), a_save(3), b(2, 2), b_save(2, 2), v(6)
   integer :: n, effects(4), effects_before(4)
   real :: r
   a = [1, 2, 3]
   a_save = a
   b = reshape([1, 2, 3, 4], [2, 2])
+  b_save = b
   v = [1, 2, 3, 4, 5, 6]
   if (add(2, 3) /= 5) error stop "pure integer"
   if (add(1.5, 2.5) /= 4.0) error stop "pure real"
@@ -100,6 +102,7 @@ program prefixes_p
   if (total(a) /= 9) error stop "value rank1"
   if (any(a /= a_save)) error stop "value leaves actual"
   if (total(b) /= 14) error stop "value rank2"
+  if (any(b /= b_save)) error stop "value leaves rank2 actual"
   if (sumc(v(1:6:2)) /= 9) error stop "contiguous section"
   n = 10
   r = 1.5
@@ -122,4 +125,5 @@ program prefixes_p
   end if
   if (any(effects_before /= [1, 2, 3, 4])) error stop "elemental value actual"
   if (fixed_answer() /= 123) error stop "no-argument typed generic"
+  print '(a)', 'TEST-PASS: prefixes'
 end program

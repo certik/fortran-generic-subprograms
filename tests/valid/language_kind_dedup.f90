@@ -1,5 +1,6 @@
 ! TEST-RULE: R705 R706 R707 R708 R712 C716 C718 C723 7.3.2.2
 ! TEST-REQUIRES: integer_kinds>=2
+! TEST-PASS: language_kind_dedup
 ! Deduplication here is within one kind array or one TYPE list. It does not
 ! merge indistinguishable specifics contributed by separate procedures.
 module language_kind_origin_m
@@ -37,7 +38,7 @@ contains
   generic function dedup_integer(x) result(y)
     type(integer(pool(-2:3:2)), integer(kfirst), integer([klast, kfirst])), intent(in) :: x
     typeof(x) :: y
-    y = x + 1
+    y = -x
   end function
 
   generic function alias_code(x) result(n)
@@ -74,10 +75,12 @@ program language_kind_dedup_p
   type(marker(0)) :: m0
   type(marker(-3)) :: mn
 
-  a = int(4, kind=k1)
-  b = int(7, kind=k2)
-  if (dedup_integer(a) /= int(5, kind=k1)) error stop "section kind first"
-  if (dedup_integer(b) /= int(8, kind=k2)) error stop "section kind last"
+  ! INTEGER_KINDS order is processor dependent and an extra kind may be very
+  ! narrow, so only 1 and -1 are used: every integer kind represents them.
+  a = int(1, kind=k1)
+  b = int(1, kind=k2)
+  if (dedup_integer(a) /= int(-1, kind=k1)) error stop "section kind first"
+  if (dedup_integer(b) /= int(-1, kind=k2)) error stop "section kind last"
   if (kind(dedup_integer(a)) /= k1) error stop "dedup first kind"
   if (kind(dedup_integer(b)) /= k2) error stop "dedup last kind"
   t%value = 37
@@ -86,4 +89,5 @@ program language_kind_dedup_p
   mn%value = 7
   if (marker_code(m0) /= 105) error stop "user kind zero"
   if (marker_code(mn) /= 207) error stop "user kind negative"
+  print '(a)', 'TEST-PASS: language_kind_dedup'
 end program

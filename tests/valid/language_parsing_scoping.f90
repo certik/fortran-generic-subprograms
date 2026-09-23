@@ -1,5 +1,6 @@
 ! TEST-RULE: R504 R705 R871 R872 C8112 C8113 C8114 8.7 11.1.11
 ! TEST-REQUIRES: int32 int64 real32 real64
+! TEST-PASS: language_parsing_scoping
 ! Mixed-case keywords, continuations, nonreserved keyword identifiers, and
 ! scoped DEFAULT KIND statements. Unqualified guard type specs use the
 ! default kind of the guard's scoping unit.
@@ -76,4 +77,5 @@ program language_parsing_scoping_p
   if (module_real(5.0_real32) /= 3205_int64) error stop "module real fallback"
   if (keyword_names(5_int64, 2_int64) /= 37_int64) error stop "keyword identifiers integer"
   if (keyword_names(5.0_real64, 3_int64) /= 38_int64) error stop "keyword identifiers real"
+  print '(a)', 'TEST-PASS: language_parsing_scoping'
 end program

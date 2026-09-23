@@ -1,5 +1,6 @@
 ! TEST-RULE: C802 R704 R705 R708 R831 8.2 15.6.2.4
 ! TEST-REQUIRES: int32 int64 real64
+! TEST-PASS: standard_note_shapes
 ! 15.6.2.4 NOTE 2, made runnable.
 ! PROBE executes all 6 x 6 independent combinations. Z takes its declared
 ! type and kind from X, its rank and shape from Y, and values from X.
@@ -230,6 +231,7 @@ program standard_note_shapes_p
   if (kind(lo64_2) /= int64 .or. rank(lo64_2) /= 2) error stop "lift int64 rank2 metadata"
   if (kind(lro_1) /= kind(0.0) .or. rank(lro_1) /= 1) error stop "lift real rank1 metadata"
   if (kind(lro_2) /= kind(0.0) .or. rank(lro_2) /= 2) error stop "lift real rank2 metadata"
+  print '(a)', 'TEST-PASS: standard_note_shapes'
 contains
   subroutine verify(at, ak, ar, ae1, ae2, av, et, ek, er, ee1, ee2, ev, label)
     integer, intent(in) :: at, ak, ar, ae1, ae2, et, ek, er, ee1, ee2

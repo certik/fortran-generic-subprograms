@@ -1,4 +1,5 @@
 ! TEST-RULE: R706 R777 R780 R782 R783 R1157
+! TEST-PASS: enumeration_types
 ! Enumeration types are generic-type-specifiers (R706). The guard's type-spec
 ! is the enumeration type name, not TYPE(name).
 module enumeration_types_m
@@ -44,4 +45,5 @@ program enumeration_types_p
   if (code(colour(1)) /= 11) error stop "colour constructor"
   if (code(fruit(2)) /= 22) error stop "fruit constructor"
   if (code(colour%green) /= 12) error stop "scoped enumerator"
+  print '(a)', 'TEST-PASS: enumeration_types'
 end program

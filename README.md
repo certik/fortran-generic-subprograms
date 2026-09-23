@@ -31,7 +31,7 @@ diagnostics.
 | --- | --- |
 | `doc/auto-generic-subprograms.md` | Clause-backed language and implementation guide |
 | `doc/conformance-coverage.md` | Requirement-to-fixture coverage matrix and known gaps |
-| `tests/valid/` | Conforming positive fixtures, including runtime, compile-only, capability-dependent, and multi-file cases as classified by the runner |
+| `tests/valid/` | Runtime-positive fixtures, including capability-dependent and separately compiled multi-file cases; every case has a main program and a completion marker |
 | `tests/invalid_compile_time/` | Settled negative cases and enhanced-diagnostic cases, classified by metadata |
 | `tests/invalid_runtime/` | Conforming programs expected to initiate error termination |
 | `tests/draft_interpretations/` | Explicitly quarantined draft readings |
@@ -43,16 +43,21 @@ The integrated inventory on 22 September 2026 is:
 
 | Category | Cases |
 | --- | ---: |
-| Positive cases (`valid` category) | 74 |
-| Compile-time diagnostic cases | 191 |
-| Expected runtime-termination cases | 2 |
-| **Total** | **267** |
+| Positive cases (`valid` category) | 104 |
+| Compile-time diagnostic cases | 251 |
+| Expected runtime-termination cases | 3 |
+| **Total** | **358** |
 
-The cases contain 278 Fortran source files. Twenty-three cases carry
-`TEST-DRAFT`; one positive case,
-`valid/language_array_domains_expanded.f90`, is an explicitly ordinary
-manual-specialization control rather than generic-subprogram execution.
-`./tests/run.sh check` reports zero metadata errors and zero warnings.
+These are static fixtures; processor-generated cases and prerequisite records
+are additional and are reported separately.
+
+The cases contain 383 Fortran source files and one companion C source.
+Twenty-four cases carry `TEST-DRAFT`. The positives
+`valid/language_array_domains_expanded.f90` and
+`valid/audit_language_identity_ordinary_control.f90` are ordinary
+manual-specialization controls rather than generic-subprogram execution.
+`./tests/run.sh check` validates metadata, not the Fortran semantics of a
+fixture or the implementation of the language feature.
 
 The runner has a Python 3.9-compatible, standard-library-only backend. The
 ordinary entry remains:
@@ -61,7 +66,7 @@ ordinary entry remains:
 FC=lfortran FCFLAGS='...' ./tests/run.sh
 ```
 
-Common metadata-only commands are:
+Common inspection and harness commands are:
 
 ```sh
 ./tests/run.sh --help
@@ -69,10 +74,13 @@ Common metadata-only commands are:
 ./tests/run.sh check invalid_compile_time/
 ./tests/run.sh list
 ./tests/run.sh list --json valid/
+./tests/run.sh self-test
 ```
 
 `check` validates fixture metadata without invoking a compiler. `list` reports
-the discovered cases; selectors are relative to `tests/`.
+the discovered cases; selectors are relative to `tests/`. `self-test` exercises
+the runner using compiler simulators and available native ordinary-Fortran
+controls; it is not a generic-subprogram conformance run.
 
 The default execution profile is conformance mode. Strict mode additionally
 requires unsuccessful rejection and enables enhanced-diagnostic cases:
@@ -82,8 +90,9 @@ FC=lfortran ./tests/run.sh --mode conformance valid/factorial.f90
 FC=lfortran ./tests/run.sh --strict invalid_compile_time/
 ```
 
-Draft readings are skipped by default. `--draft` selects one or more readings;
-selected results remain non-gating unless `--gate-drafts` is also requested:
+Draft readings are skipped by default. `--draft` selects one or more readings,
+including their enhanced-diagnostic observations without requiring `--strict`.
+Selected results remain non-gating unless `--gate-drafts` is also requested:
 
 ```sh
 ./tests/run.sh --draft empty-expansion \
@@ -98,6 +107,10 @@ that the selected interpretation is settled standard conformance.
 `character-generic-parse` and `character-ordinary-parse` are mutually
 exclusive readings: both may be selected for non-gating observation, but the
 runner rejects `--gate-drafts` when both are selected together.
+The same rule applies to `literal-rank-limit` and `extended-rank-limit`:
+the former observes the written C826 bound, while the latter exercises
+processor-advertised extended ranks. Neither profile also imposes the opposite
+reading's outcome.
 
 Processor inventory and generated coverage can be inspected or materialized:
 
@@ -119,6 +132,27 @@ FC=gfortran ./tests/run.sh \
 
 The default compile/link timeout is 60 seconds per command and the default
 runtime timeout is 20 seconds.
+
+The portable generated rank case always remains gating. Selecting
+`extended-rank-limit` adds a separate
+`@generated/processor-rank-extended` observation rather than weakening ranks
+0 through 15. It explicitly skips when no rank above 15 is advertised.
+Generation manifest version 2 records that case's selection, availability,
+source, skip reason, and coverage details; `--force` removes a stale extended
+source when regenerating without it.
+
+The mixed-language binding-label case uses a companion C helper:
+
+```sh
+FC=vendor-fc CC=cc CFLAGS='-O2' ./tests/run.sh \
+  --draft generic-bind-c valid/audit_integration_bind_c_abi/
+```
+
+Directory `.c` sources are compiled with `--cc`/`--cflags` (or `CC`/`CFLAGS`),
+and the objects are linked with the Fortran compiler. The default C command is
+`cc`. A missing or malformed C command is an infrastructure error for a
+selected mixed-language case, not a compiler-language failure or a covered
+skip. Ordinary Fortran-only cases do not resolve or require a C compiler.
 
 Vendor diagnostic wording and source locations for compile-time negative cases
 can be adapted without changing the fixture's phase or required/enhanced
@@ -159,23 +193,42 @@ policy, not additional language requirements.
 
 - Each case is built in an isolated work directory with a timeout. Directory
   fixtures are compiled as separate sources in lexical order and then linked.
+- Every positive case declares `TEST-PASS: <id>` and prints the corresponding
+  exact line after all its assertions, before the main program's `CONTAINS`
+  or end. The runner requires status zero, exactly `TEST-IMAGES` matching
+  completion lines, and no other `TEST-PASS:` lines. Status zero alone is not
+  evidence of success: `ERROR STOP 0` without completion must fail.
 - A negative case passes only when the intended phase and diagnostic are
   verified. An unrelated parse error, missing-main link error, echoed source
   line, unknown diagnostic format, or absent output is not evidence for the
-  expected rule.
+  expected rule. A compile-phase diagnostic can satisfy conformance mode even
+  with status zero and no object; an object is required only when a later
+  compile, link, or execution step needs it.
 - Processor capabilities and compiler feature support are different. Optional
   kinds, character sets, coarray launchers, image counts, and extended ranks
   can cause an explicit capability skip; absence of the generic-subprogram
   language feature is a failure, not a successful negative test.
 - The runner probes the processor’s kind inventories and generates calls for
   every reported kind. Real-kind coverage includes both real and corresponding
-  complex specifics. It also checks per-specific saved state independently by
-  kind, type, rank, and the joint type/kind/rank product. A supported kind value
-  may be zero.
+  complex specifics. Payload checks include safe integer boundaries and signs,
+  precision-sensitive real/complex values, both logical values, and rank-two
+  copies. It also checks per-specific saved state independently by kind, type,
+  rank, and the joint type/kind/rank product. A supported kind value may be zero;
+  its numeric magnitude is not a width or a safe arithmetic tag.
+- Character payload generation distinguishes known system/default, ASCII, and
+  ISO 10646 repertoires from opaque additional kinds. The latter use portable
+  ordinal-zero fallback rather than inventing a nonzero character code.
+  Generated details disclose nonzero-tested and fallback kinds and never claim
+  full repertoire or storage-width coverage.
 - Generated rank coverage invokes every generic rank specific from zero through
-  the selected portable or extended bound, twice for per-specific state. It
+  the selected portable or extended bound repeatedly for per-specific state. It
   does not treat successful construction of one ordinary high-rank array as
-  coverage of all intervening generic specifics.
+  coverage of all intervening generic specifics. Multidimensional payloads
+  activate the outermost axis and include dimension-one stride-two actuals.
+  Shapes, tested layouts, and memory strides are disclosed with bounded
+  allocation sizes; the manifest does not claim all stride-axis combinations.
+  An invalid advertised rank minimum fails generation rather than silently
+  reducing the tested domain.
 - Multi-image cases require a configured launcher. A missing launcher is
   reported as a skip, never as covered execution.
 - Runtime error-termination cases print a `TEST-STOP:` marker, execute
@@ -184,7 +237,19 @@ policy, not additional language requirements.
   literal `QUIET=` value with the same compiler, flags, and launcher; it does
   not assume one fixed message or status. The standard makes the externally
   observed status processor dependent, so there is no portable “1 through
-  127” requirement.
+  127” requirement. A reached, calibrated termination can have status 0, 126,
+  or 127; reachability and unexpected-return evidence distinguish it from a
+  launch failure. Positive tests' status-zero convention is a runner execution
+  protocol, not a claim that Fortran specifies operating-system exit statuses.
+- `TEST-STOP-IMAGE: N` makes an error-termination case and its calibration stop
+  only image N after an initial synchronization; absent metadata retains
+  all-image calibration. It is valid only for runtime-negative cases, with
+  `1 <= N <= TEST-IMAGES`, and requires exactly one reachability marker.
+  Waiting images use `SYNC ALL(STAT=...)` so a normal-STOP mutation cannot hide
+  behind a secondary synchronization error. A zero/stopped/failed return is
+  reported as an unexpected return. Other processor-dependent synchronization
+  errors print a flushed `TEST-INCONCLUSIVE:` line and are reported as errors,
+  never as passing error-termination evidence.
 
 Common metadata includes:
 
@@ -196,9 +261,15 @@ Common metadata includes:
 ! TEST-ERROR: nonoptional.*dummy
 ! TEST-ERROR-PHASE: compile
 ! TEST-ERROR-HERE
+! TEST-PASS: factorial
 ! TEST-STOP: factorial-negative
 ! TEST-IMAGES: 2
+! TEST-STOP-IMAGE: 1
 ```
+
+These lines illustrate separate case categories: `TEST-PASS` belongs to a
+positive case, diagnostic metadata to a compile-time negative, and `TEST-STOP`
+to expected error termination.
 
 `TEST-REQUIRES` describes processor capabilities, not permission to skip a
 mandatory language feature. `TEST-DRAFT` is non-gating by default; an explicit
@@ -212,8 +283,9 @@ chosen reading into a standard-conformance requirement.
   independently generic rank. Only the dependent property ceases to add a
   factor.
 - Duplicate kind values, type/kind combinations, and ranks are removed
-  semantically before the Cartesian product is formed. Equal sets on two
-  different generic dummies remain independent factors.
+  semantically when each domain is evaluated. Independent sets form a
+  Cartesian product; a generic range or kind array depending on an earlier
+  specialization is evaluated and deduplicated for that choice.
 - `INT32`, `INT64`, `REAL32`, `REAL64`, and ASCII are optional processor
   capabilities. Negative values denote unavailable named kinds; zero is a
   valid kind value. A runtime `IF` cannot protect a declaration that names an
@@ -232,7 +304,12 @@ chosen reading into a standard-conformance requirement.
   on naming a generic in a `PROCEDURE` statement under another named generic.
 - Semantic expansion does not prescribe separate machine-code bodies or
   runtime dispatch. Shared code is conforming if the observable interfaces,
-  per-specific saved state, and internal-procedure identities are preserved.
+  per-specific saved state, local type scopes, and internal-procedure/host
+  identities are preserved. Length, shape, bounds, and dynamic type do not
+  add state factors when the generic choices are unchanged.
+- Extending a generic does not erase an existing named specific sharing its
+  identifier. Specific-procedure contexts can still denote that existing
+  procedure; they cannot expose the newly generated anonymous alternatives.
 
 The unresolved readings—including generic declarations in interface bodies,
 assumed-length guards, empty expansions, `GENERIC` plus `BIND(C)`, ranks above
@@ -247,6 +324,16 @@ compiler and processor profile. It does not prove complete language
 conformance, execution of skipped capabilities, correctness of a quarantined
 draft interpretation, or absence of untested corner cases.
 
+Run reports use JSON schema version 2. `summary.profile_success` means at
+least one case executed and no gating case failed. `summary.coverage_complete`
+means every selected coverage case executed; it does not mean every case
+passed. `skipped_cases`, `unexecuted_cases`, `gating_failures`, and
+`observation_failures` retain the reasons these claims differ. Prerequisite and
+inventory records are not coverage cases. Exit status 0 reports successful
+profile execution, 1 reports gating failures, and 2 reports fatal configuration
+or no executed case. A successful profile with capability or draft skips is
+explicitly incomplete coverage, not a full-conformance certificate.
+
 Isolated probes on 22 September 2026 found that the installed gfortran 16.1,
 Flang 22 development build, and LFortran 0.66 development build reject even a
 `GENERIC` function with no generic dummy. They also lack `TYPEOF`, `RANK`
@@ -256,8 +343,15 @@ rule and must not be counted as a pass.
 
 Until the runner's feature prerequisite and diagnostic gating show that the
 intended rule was reached, repeated full-suite attempts with those compilers
-add no feature-level evidence. All 25 runner self-tests pass, and the ordinary
-`valid/language_array_domains_expanded.f90` control compiles and runs with all
-three installed compilers. No `GENERIC` fixture execution is validated
-locally. The self-tests, metadata checks, ordinary controls, and manually
-expanded specializations validate the harness or ordinary semantics only.
+add no feature-level evidence. The runner regressions include native
+status-zero `ERROR STOP`, completion-marker rejection, ordinary matrix-copy
+residuals, and mixed C/Fortran linking. The ordinary array-domains control
+runs on all three installed compilers. The faithful internal-procedure
+identity control passes gfortran but exposes baseline defects in Flang and
+LFortran; it is not weakened to hide those defects.
+
+No `GENERIC` fixture execution or real multi-image coarray execution is
+validated locally. The self-tests, metadata checks, ordinary controls, and
+manually expanded specializations validate the harness or ordinary semantics
+only. The coverage matrix records those validation boundaries and the
+conservative intrinsic-signature diagnostic classification separately.

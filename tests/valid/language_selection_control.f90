@@ -1,4 +1,5 @@
 ! TEST-RULE: R1150 R1155 R1168 C1181 11.1.14 15.6.2.4
+! TEST-PASS: language_selection_control
 ! Named EXIT, RETURN, and named loops occur only in selected blocks. BLOCK
 ! declarations contain type/rank-specific specification expressions that must
 ! be pruned before semantic analysis of every other specific.
@@ -114,4 +115,5 @@ program language_selection_control_p
   if (type_block_spec(2.0) /= 6) error stop "real block declaration"
   if (rank_block_spec(v) /= 12) error stop "rank1 block declaration"
   if (rank_block_spec(m) /= 14) error stop "rank2 block declaration"
+  print '(a)', 'TEST-PASS: language_selection_control'
 end program

@@ -1,4 +1,5 @@
 ! TEST-RULE: R706 R771 R772 R775 R776 R1157
+! TEST-PASS: enum_bind_c
 ! Interoperable enum types are generic-type-specifiers. Enumerators themselves
 ! are integers; values of the enum type are produced by an enum constructor.
 module enum_bind_c_m
@@ -41,4 +42,5 @@ program enum_bind_c_p
   if (code(colour(green)) /= 12) error stop "colour green"
   if (code(fruit(apple)) /= 21) error stop "fruit apple"
   if (code(fruit(pear)) /= 22) error stop "fruit pear"
+  print '(a)', 'TEST-PASS: enum_bind_c'
 end program

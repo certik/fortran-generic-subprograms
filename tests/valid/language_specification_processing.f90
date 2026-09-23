@@ -1,5 +1,6 @@
 ! TEST-RULE: R704 R705 R831 8.1 C819 10.1.11 10.1.12 15.6.2.4
 ! TEST-REQUIRES: real64
+! TEST-PASS: language_specification_processing
 ! Attributes supplied by DIMENSION, ALLOCATABLE, POINTER, and INTENT
 ! statements are combined with generic/dependent type declarations. Constant
 ! and specification expressions depend on the interpreted kind, rank, and
@@ -100,6 +101,7 @@ program language_specification_processing_p
   call check(k, r, extent, total, kind(rx), 1, 4, 7.5_real64)
   call property_probe(rm, k, r, extent, total)
   call check(k, r, extent, total, kind(rm), 2, 5, 10.0_real64)
+  print '(a)', 'TEST-PASS: language_specification_processing'
 contains
   subroutine check(ak, ar, ae, av, ek, er, ee, ev)
     integer, intent(in) :: ak, ar, ae, ek, er, ee

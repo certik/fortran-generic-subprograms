@@ -1,4 +1,5 @@
 ! TEST-RULE: R705 R712 R713 R714 C715 C719 C721 C722 C723 C7121 7.5.9
+! TEST-PASS: language_pdt_defaults
 ! Defaulted PDT kind parameters may be omitted in an ordinary guard. The PDT
 ! has no length parameter, so this does not depend on assumed-length guards.
 ! Scalar and rank-array factors are both exercised, as is CLASS with a
@@ -66,4 +67,5 @@ program language_pdt_defaults_p
   if (code /= 201 .or. total /= 15 .or. rank(a2) /= 1) error stop "box kind2 array"
   if (inspect_class(b1) /= 1003) error stop "class defaulted kind"
   if (inspect_class(b2) /= 2006) error stop "class explicit kind"
+  print '(a)', 'TEST-PASS: language_pdt_defaults'
 end program

@@ -1,4 +1,5 @@
 ! TEST-RULE: R831 R832 R833 R1150 R1152 11.1.10
+! TEST-PASS: select_rank_default
 ! RANK list, range, and RANK DEFAULT. A rank that matches no list uses the
 ! default. No match and no default would leave the assignment unmade; here
 ! every rank of the dummy matches something (11.1.10).
@@ -27,4 +28,5 @@ program select_rank_default_p
   if (code(r1) /= -1) error stop "rank 1 default"
   if (code(r2) /= 2) error stop "rank 2"
   if (code(r3) /= -1) error stop "rank 3 default"
+  print '(a)', 'TEST-PASS: select_rank_default'
 end program

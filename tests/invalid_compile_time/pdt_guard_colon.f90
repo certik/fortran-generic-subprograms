@@ -1,10 +1,12 @@
 ! TEST-RULE: C1160
-! TEST-DRAFT: assumed-length-guards
 ! TEST-DIAGNOSTIC-CLASS: required
-! TEST-ERROR: C1160|length type parameter.*assumed|deferred.*guard
+! TEST-ERROR: C1160|(length|len) type parameters?.*assumed|deferred.*guard
 ! TEST-ERROR-PHASE: compile
 ! Invalid: C1160. A length parameter in DECLARED TYPE IS is assumed (*),
 ! not deferred (:).
+! Settled under either assumed-length-guards reading: whether or not a
+! guard may spell an assumed length with *, a deferred length does not
+! specify that the length parameter is assumed.
 module pdt_guard_colon_m
   implicit none
   type :: u(k, n)

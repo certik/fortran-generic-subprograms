@@ -1,6 +1,6 @@
 ! TEST-RULE: 15.4.3.4.2 15.6.2.4
 ! TEST-DIAGNOSTIC-CLASS: enhanced
-! TEST-ERROR: intrinsic operator.*conflict|operator.*intrinsic.*same|cannot redefine.*\\+
+! TEST-ERROR: conflicts? with (the )?intrinsic (operator|interface)|intrinsic operator.*conflict|operator.*intrinsic.*same|cannot redefine.*\+
 ! TEST-ERROR-PHASE: compile
 module reject_operator_generated_intrinsic_conflict_m
   implicit none

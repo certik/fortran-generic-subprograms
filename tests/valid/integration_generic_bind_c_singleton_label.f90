@@ -1,5 +1,6 @@
 ! TEST-RULE: C1564 15.6.2.4 19.10.2
 ! TEST-DRAFT: generic-bind-c
+! TEST-PASS: integration_generic_bind_c_singleton_label
 ! With no generic dummy there is one specific, so one explicit nonempty
 ! binding label is associated with exactly one interoperable procedure.
 module integration_generic_bind_c_singleton_label_m
@@ -20,4 +21,5 @@ program integration_generic_bind_c_singleton_label_p
   call mark_call()
   call mark_call()
   if (call_count /= 2) error stop "singleton binding-label call"
+  print '(a)', 'TEST-PASS: integration_generic_bind_c_singleton_label'
 end program

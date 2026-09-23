@@ -1,4 +1,5 @@
 ! TEST-RULE: R705 R706 C704 C715 R771 R776 R777 R783 R1157 7.5.2.4 7.5.7
+! TEST-PASS: language_type_domains
 ! One TYPE list mixes intrinsic, derived, interoperable enum, and enumeration
 ! types. Separate coverage passes SEQUENCE and BIND(C) types through TYPE.
 ! An abstract extensible type appears through CLASS but never in a
@@ -117,4 +118,5 @@ program language_type_domains_p
   if (layout_code(c) /= 609) error stop "bind c type"
   if (class_code(o) /= 710) error stop "concrete class declared type"
   if (class_code(p) /= 823) error stop "abstract declared, leaf dynamic"
+  print '(a)', 'TEST-PASS: language_type_domains'
 end program

@@ -1,4 +1,5 @@
 ! TEST-RULE: R1509 R1510 C1512 C1516 12.6.4.8 15.4.3.3 15.4.3.4.4
+! TEST-PASS: defined_io
 ! GENERIC statements attach all generated specifics to all four defined-I/O
 ! identifiers. The implementation names remain private.
 module defined_io_m
@@ -132,4 +133,5 @@ program defined_io_p
   close(unit)
   if (bx_read%n /= 42) error stop "unformatted box round trip"
   if (bg_read%n /= 17) error stop "unformatted bag round trip"
+  print '(a)', 'TEST-PASS: defined_io'
 end program

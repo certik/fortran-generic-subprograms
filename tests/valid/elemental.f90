@@ -1,4 +1,5 @@
 ! TEST-RULE: C15135 C15137 8.5.17 15.9.2 15.6.2.4
+! TEST-PASS: elemental
 ! ELEMENTAL applies to each scalar specific. Array actuals are elemental
 ! references, not generic-rank matches. RANK(0:0) is generic and still scalar.
 module elemental_m
@@ -68,4 +69,5 @@ program elemental_p
   end if
   if (any(value_plus_two(a) /= [3, 4, 5])) error stop "elemental value"
   if (any(a /= a_before)) error stop "value changed actual"
+  print '(a)', 'TEST-PASS: elemental'
 end program

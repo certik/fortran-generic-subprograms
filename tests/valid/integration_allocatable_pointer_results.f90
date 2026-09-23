@@ -1,4 +1,5 @@
 ! TEST-RULE: C877 8.5.3 8.5.14 9.7.1 10.2.1.3 15.6.2.4
+! TEST-PASS: integration_allocatable_pointer_results
 ! Allocatable and pointer results follow generic rank, preserve data and
 ! lengths, handle zero extents, and can alias a noncontiguous target.
 module integration_allocatable_pointer_results_m
@@ -91,4 +92,5 @@ program integration_allocatable_pointer_results_p
   if (.not. allocated(words_copy)) error stop "text array allocation"
   if (len(words_copy) /= 3) error stop "text array length"
   if (any(words_copy /= words)) error stop "text array values"
+  print '(a)', 'TEST-PASS: integration_allocatable_pointer_results'
 end program

@@ -1,4 +1,5 @@
 ! TEST-RULE: C826 C875 C877 8.5.17 15.6.2.4
+! TEST-PASS: full_rank_range
 ! C826 limits the portable default set to rank 15. Every rank from zero
 ! through fifteen executes with descriptor, element-order, and value checks.
 module full_rank_range_m
@@ -80,4 +81,5 @@ program full_rank_range_p
   if (verify_rank(r13, 13, 131, 132) /= 14442) error stop "rank 13"
   if (verify_rank(r14, 14, 141, 142) /= 15552) error stop "rank 14"
   if (verify_rank(r15, 15, 151, 152) /= 16662) error stop "rank 15"
+  print '(a)', 'TEST-PASS: full_rank_range'
 end program

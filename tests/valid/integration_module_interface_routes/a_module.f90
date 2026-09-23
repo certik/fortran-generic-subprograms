@@ -1,6 +1,7 @@
 ! TEST-RULE: C1561 C1564 15.4.3.2 15.4.3.4.1 15.6.2.6
 ! TEST-REQUIRES: int32 int64
 ! TEST-DRAFT: generic-interface-declarations
+! TEST-PASS: integration_module_interface_routes
 ! Generic MODULE interface bodies contribute every generated specific to
 ! enclosing named and operator generics.
 module integration_module_interface_routes_m

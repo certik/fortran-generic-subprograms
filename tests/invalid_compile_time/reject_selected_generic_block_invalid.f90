@@ -1,7 +1,14 @@
-! TEST-RULE: 15.6.2.4p2
+! TEST-RULE: 15.6.2.4p2 11.1.11.2 15.5.5.4 17.9.215
 ! TEST-DIAGNOSTIC-CLASS: enhanced
-! TEST-ERROR: SQRT.*(real|complex)|invalid.*integer.*SQRT|arguments.*SQRT
+! TEST-ERROR: SQRT.*(real|complex|expects)|invalid.*integer.*SQRT|arguments.*SQRT|actual argument.*(bad|wrong|invalid) type
 ! TEST-ERROR-PHASE: compile
+! The integer specific keeps its selected DECLARED TYPE IS (INTEGER) block
+! (11.1.11.2), which references intrinsic SQRT (15.5.5.4 p2) with an integer
+! argument; X shall be real or complex (17.9.215). The program calls only the
+! real specific.
+! Enhanced is a conservative classification, not a claim that 4.2 p2(7)
+! cannot apply; see "Intrinsic-signature diagnostic policy" in
+! doc/auto-generic-subprograms.md.
 module reject_selected_generic_block_invalid_m
   implicit none
 contains

@@ -1,4 +1,5 @@
 ! TEST-RULE: 15.4.3.4.5 15.5.5.2 15.6.2.4
+! TEST-PASS: extend_intrinsic
 ! A generic subprogram may have the name of an intrinsic. A reference that
 ! matches one of its specifics calls that specific. A reference that matches
 ! none of them, and matches the intrinsic, calls the intrinsic
@@ -27,13 +28,24 @@ end module
 program extend_intrinsic_p
   use extend_intrinsic_m
   implicit none
-  complex :: z
-  real :: harvest(4)
+  complex, parameter :: argument = (1.0, 1.0)
+  complex, parameter :: imaginary_unit = (0.0, 1.0)
+  complex :: z, expected
+  real :: harvest(4), tolerance
   integer :: n, values(3)
   if (sin(3) /= 6) error stop "integer specific"
   if (sin(1.5) /= 3.0) error stop "real specific, not intrinsic sin"
-  z = sin((0.0, 1.0))
-  if (aimag(z) == 0.0) error stop "complex uses intrinsic sin"
+  ! EXP is not extended here, so SIN(z) = (EXP(iz) - EXP(-iz)) / (2i) is an
+  ! independent value for the intrinsic complex SIN. At 1+i it is about
+  ! 1.2985+0.6350i; X+X gives 2+2i and the identity gives 1+i.
+  expected = (exp(imaginary_unit*argument) - exp(-imaginary_unit*argument)) &
+    / (2.0*imaginary_unit)
+  tolerance = max(1.0e-3, 64.0*epsilon(1.0))
+  z = sin(argument)
+  if (abs(real(z) - real(expected)) > tolerance .or. &
+      abs(aimag(z) - aimag(expected)) > tolerance) then
+    error stop "complex reference did not use intrinsic sin"
+  end if
   call random_number(n)
   call random_number(values)
   if (n /= 42 .or. any(values /= 42)) error stop "subroutine specifics"
@@ -42,4 +54,5 @@ program extend_intrinsic_p
     error stop "intrinsic subroutine fallback"
   end if
   if (random_seed() /= 77) error stop "function-subroutine distinction"
+  print '(a)', 'TEST-PASS: extend_intrinsic'
 end program

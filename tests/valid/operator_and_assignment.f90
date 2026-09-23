@@ -1,4 +1,5 @@
 ! TEST-RULE: R1510 C1512 15.4.3.3 15.4.3.4.2 15.4.3.4.3 15.6.2.4
+! TEST-PASS: operator_and_assignment
 ! GENERIC statements route every generated specific to unary and binary
 ! operators and assignment. Traditional and multiple generated sets merge.
 module operator_and_assignment_m
@@ -95,4 +96,5 @@ program operator_and_assignment_p
   if (bx_twice%n /= 18 .or. bg_twice%n /= 14) then
     error stop "unary derived types"
   end if
+  print '(a)', 'TEST-PASS: operator_and_assignment'
 end program

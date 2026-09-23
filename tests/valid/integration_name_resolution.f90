@@ -1,4 +1,5 @@
 ! TEST-RULE: C7132 7.5.10 14.2.2 15.4.3.4.1 15.5.5.1 15.5.5.2 15.6.2.4
+! TEST-PASS: integration_name_resolution
 ! USE ONLY renaming merges generic interfaces from different modules.
 module integration_resolution_integer_m
   implicit none
@@ -106,4 +107,5 @@ program integration_name_resolution_p
   end if
   if (from_constructor%value /= 9) error stop "keyword structure constructor"
   if (from_character_function%value /= 4) error stop "character extension"
+  print '(a)', 'TEST-PASS: integration_name_resolution'
 end program

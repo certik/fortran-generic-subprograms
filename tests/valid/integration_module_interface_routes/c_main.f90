@@ -12,4 +12,5 @@ program integration_module_interface_routes_p
   if ((.rankcode. [2_int64, 3_int64]) /= 105) then
     error stop "operator int64 rank-one route"
   end if
+  print '(a)', 'TEST-PASS: integration_module_interface_routes'
 end program

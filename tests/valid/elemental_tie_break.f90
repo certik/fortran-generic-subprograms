@@ -1,4 +1,5 @@
 ! TEST-RULE: 15.5.5.2 15.9.2 C.10.6
+! TEST-PASS: elemental_tie_break
 ! An elemental specific is distinguished as if it were scalar. When an
 ! array actual matches both that elemental specific and a nonelemental
 ! specific, the nonelemental one is chosen (15.5.5.2 p1–p2, C.10.6 p5).
@@ -28,4 +29,5 @@ program elemental_tie_break_p
   if (pick(row) /= 106) error stop "rank 1 is nonelemental"
   if (any(shape(pick(grid)) /= [2, 2])) error stop "rank 2 shape"
   if (any(pick(grid) /= grid + 1)) error stop "rank 2 is elemental"
+  print '(a)', 'TEST-PASS: elemental_tie_break'
 end program

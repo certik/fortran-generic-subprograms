@@ -1,4 +1,5 @@
 ! TEST-RULE: R705 C715 C716 R1155 R1157 7.3.3 11.1.11
+! TEST-PASS: derived_and_class
 ! TYPE of a parent and its extension is distinguishable.
 ! CLASS of two unrelated types is distinguishable; the guard sees the declared
 ! type, and SELECT TYPE inside it sees the dynamic type (7.3.3, 11.1.11).
@@ -77,4 +78,5 @@ program derived_and_class_p
   if (which_class(p) /= 3) error stop "dynamic extension"
   if (rank_of_poly(b) /= 0) error stop "poly scalar"
   if (rank_of_poly(row) /= 1) error stop "poly rank1"
+  print '(a)', 'TEST-PASS: derived_and_class'
 end program

@@ -1,4 +1,5 @@
 ! TEST-RULE: 15.4.3.4.5 15.5.2 15.6.2.4
+! TEST-PASS: integration_keyword_optional
 ! Keywords and optional nongeneric dummies retain their names and presence
 ! independently in every generated specific.
 module integration_keyword_optional_m
@@ -29,4 +30,5 @@ program integration_keyword_optional_p
   if (adjust(offset=1, scale=2, value=1.5) /= 4.0) then
     error stop "reordered real keywords"
   end if
+  print '(a)', 'TEST-PASS: integration_keyword_optional'
 end program

@@ -1,5 +1,6 @@
 ! TEST-RULE: 15.6.2.4 NOTE6
 ! TEST-REQUIRES: int32 int64
+! TEST-PASS: factorial
 ! 15.6.2.4 NOTE 6. n-1 has the same type and kind as n, so the recursive
 ! reference resolves to the same specific. 0 and 1 both return 1.
 module factorial_m
@@ -30,4 +31,5 @@ program factorial_p
   if (factorial(5_int32) /= 120_int32) error stop "5! int32"
   if (factorial(13_int64) /= fact13) error stop "13! int64"
   if (kind(factorial(13_int64)) /= int64) error stop "kind"
+  print '(a)', 'TEST-PASS: factorial'
 end program

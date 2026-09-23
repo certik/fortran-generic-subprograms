@@ -1,5 +1,6 @@
 ! TEST-RULE: 8.5.17 11.6 15.6.2.4
 ! TEST-IMAGES: 2
+! TEST-PASS: integration_coarray_multi_image
 ! This case requires an actual two-image launcher and checks remote data for
 ! both integer and real type-generated coarray specifics.
 program integration_coarray_multi_image_p
@@ -20,6 +21,7 @@ program integration_coarray_multi_image_p
     error stop "remote real coarray"
   end if
   sync all
+  print '(a)', 'TEST-PASS: integration_coarray_multi_image'
 contains
   generic function remote_value(x, image) result(value)
     type(integer, real), intent(in), rank(0) :: x[*]

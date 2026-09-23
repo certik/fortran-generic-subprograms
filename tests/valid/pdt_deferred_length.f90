@@ -1,5 +1,6 @@
 ! TEST-RULE: R712 R713 R714 C717 C722 C723 7.2 15.6.2.4
 ! TEST-REQUIRES: int32 int64
+! TEST-PASS: pdt_deferred_length
 ! A deferred length parameter is written "n=:" (C722). This settled core
 ! exercises deferred-length allocatable dummies without an assumed-length
 ! generic type guard; that interpretation-dependent guard is isolated in
@@ -36,4 +37,5 @@ program pdt_deferred_length_p
   if (b%k /= int64 .or. b%n /= 5) error stop "int64 params"
   if (any(a%v /= 4_int32)) error stop "int32 value"
   if (any(b%v /= 5_int64)) error stop "int64 value"
+  print '(a)', 'TEST-PASS: pdt_deferred_length'
 end program

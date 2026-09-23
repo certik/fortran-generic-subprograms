@@ -1,4 +1,5 @@
 ! TEST-RULE: 14.2.2 15.6.2.4
+! TEST-PASS: separate_compilation
 ! Compiled before the program that uses it. Every specific has to be
 ! available to that later compilation (15.6.2.4).
 module separate_compilation_m

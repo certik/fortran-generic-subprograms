@@ -3,10 +3,11 @@
 ! TEST-DIAGNOSTIC-CLASS: enhanced
 ! TEST-ERROR: empty.*rank|rank range.*(empty|no rank)|no specific
 ! TEST-ERROR-PHASE: compile
-! Invalid. RANK(1:0) is a generic rank clause whose range names no rank.
-! A rank-generic dummy has to have at least one rank after the range is
-! expanded. The draft does not say this in a numbered constraint; the
-! suite still rejects it.
+! Selected empty-expansion reading only. RANK(1:0) is a generic RANK clause
+! whose range names no rank. Neither 8.5.17 nor 15.6.2.4 says whether that
+! denotes zero specifics or is invalid, so this fixture records only the
+! reading that requires a nonempty rank set. It is not settled conformance,
+! and accepting the declaration is not a failure outside that profile.
 module empty_rank_range_m
   implicit none
 contains

@@ -1,4 +1,5 @@
 ! TEST-RULE: R1150 R1152 R1155 R1157 11.1.10.2 11.1.11.2 15.6.2.4
+! TEST-PASS: language_selection_order
 ! Defaults may be first, middle, or the only guard. SELECT GENERIC constructs
 ! and individual guarded blocks may be empty. Out-of-set guards are deleted;
 ! no runtime IF is used to hide operations invalid for retained specifics.
@@ -31,22 +32,26 @@ contains
     end select
   end function
 
-  generic function type_default_only(x) result(n)
+  generic subroutine type_default_only(x, code, k)
     type(integer, real), intent(in) :: x
-    integer :: n
+    integer, intent(out) :: code, k
+    code = -1
+    k = -1
     select generic type (x)
     declared type default
-      n = 50 + kind(x)
+      code = 50
+      k = kind(x)
     end select
-  end function
+  end subroutine
 
-  generic function empty_type_construct(x) result(n)
+  generic subroutine empty_type_construct(x, code, k)
     type(integer, real), intent(in) :: x
-    integer :: n
-    n = 61 + kind(x)
+    integer, intent(out) :: code, k
+    code = 61
+    k = kind(x)
     select generic type (x)
     end select
-  end function
+  end subroutine
 
   generic function empty_type_block(x) result(n)
     type(integer, real, logical), intent(in) :: x
@@ -130,7 +135,7 @@ end module
 program language_selection_order_p
   use language_selection_order_m
   implicit none
-  integer :: v(2), m(1, 2)
+  integer :: v(2), m(1, 2), code, k
 
   v = [2, 3]
   m = reshape([4, 5], [1, 2])
@@ -140,10 +145,20 @@ program language_selection_order_p
   if (type_default_middle(5) /= 35) error stop "type default middle integer"
   if (type_default_middle(2.0) /= -2) error stop "type default middle fallback"
   if (type_default_middle(.true.) /= 41) error stop "type default middle logical"
-  if (type_default_only(1) /= 50 + kind(1)) error stop "type default only integer"
-  if (type_default_only(1.0) /= 50 + kind(1.0)) error stop "type default only real"
-  if (empty_type_construct(1) /= 61 + kind(1)) error stop "empty type integer"
-  if (empty_type_construct(1.0) /= 61 + kind(1.0)) error stop "empty type real"
+  ! Kind values are opaque processor values, so they are compared separately
+  ! from the selection codes rather than added to them.
+  call type_default_only(1, code, k)
+  if (code /= 50) error stop "type default only integer selection"
+  if (k /= kind(1)) error stop "type default only integer kind"
+  call type_default_only(1.0, code, k)
+  if (code /= 50) error stop "type default only real selection"
+  if (k /= kind(1.0)) error stop "type default only real kind"
+  call empty_type_construct(1, code, k)
+  if (code /= 61) error stop "empty type integer"
+  if (k /= kind(1)) error stop "empty type integer kind"
+  call empty_type_construct(1.0, code, k)
+  if (code /= 61) error stop "empty type real"
+  if (k /= kind(1.0)) error stop "empty type real kind"
   if (empty_type_block(1) /= 0) error stop "empty selected block"
   if (empty_type_block(1.0) /= 2) error stop "nonempty real block"
   if (empty_type_block(.true.) /= 3) error stop "nonempty logical block"
@@ -162,4 +177,5 @@ program language_selection_order_p
   if (empty_rank_cases(v) /= 5) error stop "nonempty rank block"
   if (empty_rank_construct(4) /= 80) error stop "empty rank construct scalar"
   if (empty_rank_construct(v) /= 81) error stop "empty rank construct vector"
+  print '(a)', 'TEST-PASS: language_selection_order'
 end program

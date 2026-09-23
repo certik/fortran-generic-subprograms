@@ -1,5 +1,6 @@
 ! TEST-RULE: R704 R708 C718 7.3.2.1 15.6.2.4
 ! TEST-REQUIRES: real32 real64
+! TEST-PASS: dependent_mod
 ! A dependent second argument does not add combinations, so MOD is legal.
 ! A non-generic assumed-shape array can still follow the generic type.
 module dependent_mod_m
@@ -30,4 +31,5 @@ program dependent_mod_p
   if (modulo_wrap(5.0_real64, 3.0_real64) /= 2.0_real64) error stop "mod real64"
   if (scaled_sum(2, [1, 2, 3]) /= 12) error stop "scaled integer"
   if (scaled_sum(1.5, [1.0, 2.0]) /= 4.5) error stop "scaled real"
+  print '(a)', 'TEST-PASS: dependent_mod'
 end program

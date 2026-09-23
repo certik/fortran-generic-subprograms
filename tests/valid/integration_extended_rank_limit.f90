@@ -1,5 +1,6 @@
 ! TEST-RULE: C826 C877 8.5.17 17.10.2.24
 ! TEST-DRAFT: extended-rank-limit
+! TEST-PASS: integration_extended_rank_limit
 ! Under the documented extended-rank interpretation, a named constant and
 ! an allocatable object can have processor-dependent RANK(MAX_RANK()).
 module integration_extended_rank_limit_m
@@ -31,4 +32,5 @@ program integration_extended_rank_limit_p
   integer, allocatable, rank(max_rank()) :: value
   allocate(value, source=source)
   if (inspect_high_rank(value) /= 33) error stop "extended rank result"
+  print '(a)', 'TEST-PASS: integration_extended_rank_limit'
 end program

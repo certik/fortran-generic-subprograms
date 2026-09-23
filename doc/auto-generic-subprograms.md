@@ -2,7 +2,7 @@
 
 This document states the rules for **generic subprograms** (also called auto-generic subprograms) as specified by the Fortran 2028 working draft **J3/26-007r1** (3 March 2026, WD 1539-1). It is a guide for implementers and for the conformance tests in `tests/`. Clause numbers below refer to that draft.
 
-The normative text is the draft. This note paraphrases it, keeps the syntax, and adds examples. Several draft sentences are inconsistent. They are called out in [Unresolved draft interpretations](#unresolved-draft-interpretations), and their tests are quarantined rather than used to declare either accepting or rejecting processors nonconforming.
+The normative text is the draft. This note paraphrases it, keeps the syntax, and adds examples. It describes the new syntax and specialization model for an implementation that already applies the ordinary Fortran rules for interfaces, scopes, expressions, and argument association; it does not replace those clauses. Several draft sentences are inconsistent. They are called out in [Unresolved draft interpretations](#unresolved-draft-interpretations), and their tests are quarantined rather than used to declare either accepting or rejecting processors nonconforming.
 
 Paper **J3/25-156r1** (John Reid, 26 June 2025) is the edit paper that introduced the feature. The draft has since changed the syntax. Where they differ, **26-007r1 wins**. The differences are listed in [Changes since 25-156r1](#changes-since-25-156r1).
 
@@ -22,7 +22,7 @@ These answers are the feature author's guidance (not extra normative text). They
 
 **Does a rank-generic dummy of ranks 0..7 generate every rank, and does a second generic dummy generate the full cross product? Or can a compiler wait and generate only the combinations a program uses?**
 
-The meaning of the subprogram is the full semantic set. There is one specific procedure for every combination of the deduplicated type/kind set of each type-generic dummy and the deduplicated rank set of each rank-generic dummy. Distinct generic factors form a Cartesian product, not a “diagonal”.
+The meaning of the subprogram is the full semantic set. There is one specific procedure for every permitted combination of the deduplicated type/kind set of each type-generic dummy and the deduplicated rank set of each rank-generic dummy. Independent generic factors form a Cartesian product, not a “diagonal”. A generic domain can itself contain inquiries depending on an earlier generic property; such a domain is evaluated and deduplicated for each choice of its dependencies, not replaced by a global union. See [Dependent generic domains](#dependent-generic-domains).
 
 Genericity is classified **property by property**, not once for the whole dummy. A dependent property does not add its own factor, but it does not cancel another property that is declared generically. For example, in 8.2 NOTE 1, `X` has two kinds and three ranks, while `Y` has an independent two-kind generic type declaration and a rank that follows `X`:
 
@@ -49,11 +49,11 @@ They overlap in some use cases, and they are complementary.
 
 ## What a generic subprogram is
 
-A subprogram whose `FUNCTION` or `SUBROUTINE` statement has the prefix `GENERIC` is a **generic subprogram** (3.143.2, 15.6.2.4). It defines a **generic name** and a set of **unnamed** specific procedures with explicit interfaces. The name of the subprogram is the generic identifier for those specifics. There are no specific names.
+A subprogram whose `FUNCTION` or `SUBROUTINE` statement has the prefix `GENERIC` is a **generic subprogram** (3.143.2, 15.6.2.4). It defines a **generic name** and a set of **unnamed** specific procedures with explicit interfaces. The name of the subprogram is the generic identifier for those specifics. There are no visible specific names for the newly generated procedures. Extending an existing generic does not remove the names of its existing named specifics.
 
 The effect is the same as writing the body once per combination, deleting the `SELECT GENERIC` blocks that do not match that combination, giving each copy a distinct name, and declaring a generic identifier for those names — except that the specific names are not visible (15.6.2.4 NOTE 1).
 
-A generic subprogram with **no** generic dummy argument is allowed. It defines a generic name with exactly one unnamed specific. The name is still generic, not specific, so it cannot be passed as an actual argument (15.6.2.4 NOTE 7).
+A generic subprogram with **no** generic dummy argument is allowed. It defines a generic name with exactly one unnamed specific. An identifier denoting only that generic set cannot be passed as a procedure actual argument (15.6.2.4 NOTE 7). The separate case in which an existing named specific has the same identifier is described in [What the generic name is not](#what-the-generic-name-is-not).
 
 ```fortran
 generic function square(x)
@@ -75,7 +75,11 @@ The result above is a scalar declared without a `RANK` clause. C877 allows a `RA
 
 A generic subprogram whose name is already the generic name of an intrinsic can extend that intrinsic. A reference that matches one of its specifics calls that specific. A reference that matches none of them can fall back to the intrinsic (15.5.5.2 p5), but only while the intrinsic remains accessible. Under 15.4.3.4.5 p8, if the user generic’s procedures and the intrinsic are not **all functions** or **all subroutines**, the intrinsic is not accessible by that generic name. An explicit `INTRINSIC` declaration has the corresponding all-functions-or-all-subroutines constraint C855.
 
-Semantically, each specific is a separate procedure. It has its own instances, its own saved local variables, and its own internal procedures. A `SAVE` local is not shared across kinds or ranks. An implementation may keep one physical body and a hidden specialization key, but then saved state and internal-procedure identities must also be partitioned by specific; merely sharing one `SAVE` object would be wrong.
+Semantically, each specific is a separate procedure. It has its own instances, its own saved local variables, and its own internal procedures. The specialization key includes the selected properties of **all** generic dummies and every PDT kind parameter, not just the first dummy or an intrinsic kind number. A `SAVE` local, including one saved implicitly by initialization or `DATA`, is not shared between distinct specifics. Saved allocation and pointer association status obey the same partition.
+
+An implementation may keep one physical body and a hidden specialization key, but it must preserve the scopes and identities of the equivalent separately written specifics (15.6.2.4 NOTE 1). A non-`SEQUENCE`, non-`BIND(C)` local derived-type definition belongs to its specific's scope; it is not one shared type merely because the source spelling is the same. The ordinary derived-type equivalence rules in 7.5.2.4 still apply. Internal-procedure references retain the correct active host instance (15.5.2.10 p6); saving a pointer does not extend that instance's lifetime.
+
+Conversely, changing only a character or PDT length, an assumed/deferred array's extents or bounds, an argument's value, or a polymorphic actual's dynamic type does not create another specific when its generic type/kind/rank choices are unchanged. Such calls share that specific's saved state. Use-associated or host-associated storage outside the generic subprogram remains shared according to ordinary association rules.
 
 ## Where the prefix may appear
 
@@ -163,7 +167,9 @@ Named storage-size constants are not portable promises of availability. `INT32`,
 - a runtime `IF (INT32 >= 0)` cannot protect `INTEGER(INT32) :: x`, `1_INT32`, or another unsupported-kind declaration or literal, because the whole program unit must be valid during translation; and
 - inventory arrays are the portable way to request all kinds, while generated callers can exercise each reported value.
 
-`CHARACTER` must state an assumed (`*`) or deferred (`:`) length. `CHARACTER(LEN=10, KIND=CHARACTER_KINDS)` is illegal (C717). So is a `*char-length` on the entity that is not `*` or `:` (C804). A `*char-length` is allowed only when every type in the spec is character (C803).
+A generic character type specifier must state an assumed (`*`) or deferred (`:`) length. `CHARACTER(LEN=10, KIND=CHARACTER_KINDS)` is illegal (C717). So is a `*char-length` on the entity of a generic declaration that is not `*` or `:` (C804). A `*char-length` is allowed only when every type in the generic type spec is character (C803).
+
+C717 is not a restriction on every type declaration that happens to be generic in **rank**. For example, `CHARACTER(LEN=10), RANK(0:1) :: x` has an ordinary character type spec and a generic rank clause; its explicit length is legal. Similarly, `TYPE(t(k=1,n=4)), RANK(0:1) :: x` is rank-generic only when the PDT kind parameters are all scalar. In contrast, the entity spelling `x*10` in either generic declaration would violate C804. The ordinary restrictions on allocatable, pointer, assumed, and deferred length parameters still apply.
 
 `CHARACTER(LEN=*)` and `CHARACTER(*)` **without a kind expression** match both the ordinary character grammar and the generic intrinsic grammar. Unlike `INTEGER(INT32)`, there is no scalar kind expression for C718 to reject in the generic parse. The draft does not select one parse. Under `character-ordinary-parse` the dummy is assumed-length and not type-generic; under `character-generic-parse` it is a singleton default-character generic and may be selected by `SELECT GENERIC TYPE`. These are mutually exclusive draft readings, not a settled preference.
 
@@ -195,7 +201,7 @@ A `generic-type-specifier-list` that contains **no** kind-generic specifier must
 
 Duplicate kind values in one kind array are kept as a single semantic value (7.3.2.2 p2). Duplicate type/kind combinations in one `generic-type-spec` are likewise collapsed (p3), even when they were written differently. The dummy **stays generic** even if one combination remains. `TYPE(REAL(REAL64), DOUBLE PRECISION)` is one combination on a processor where those kinds are equal, and two combinations otherwise.
 
-Deduplication is per set, before the Cartesian product. Equal sets on `x` and `y` are still two independent factors. The draft does not, however, say what survives when two character or PDT specifiers have the same type and kind but different assumed/deferred length modes, for example assumed `*` versus deferred `:`. That is the quarantined `mixed-length-dedup` reading.
+Deduplication is per domain, after the expressions defining that domain can be evaluated. Equal independently defined sets on `x` and `y` are still two factors. If a domain depends on another specialization choice, deduplication is performed with that choice fixed. The draft does not, however, say what survives when two character or PDT specifiers have the same type and kind but different assumed/deferred length modes, for example assumed `*` versus deferred `:`. That is the quarantined `mixed-length-dedup` reading.
 
 ### Parameterized derived types
 
@@ -223,7 +229,7 @@ end type
 type(t([kind(0.0), kind(0.0d0)], k2=[1, 2, 4, 8], n=*)), intent(inout) :: x
 ```
 
-is eight specifics: two values of `k1` times four values of `k2`. `n` is assumed from the actual. On a processor where `kind(0.0)` and `kind(0.0d0)` are the same, p2 collapses `k1` and only four specifics remain.
+is eight specifics with the standard default real and double precision kinds: two values of `k1` times four values of `k2`. `n` is assumed from the actual. If an enclosing scope changes the default real kind to the double precision kind, `kind(0.0)` and `kind(0.0d0)` coincide, p2 collapses `k1`, and only four specifics remain.
 
 Length parameters never add a generic-resolution factor (7.2 p2). `n=*` is assumed from the effective argument in each specific; `n=:` remains deferred where the entity and context permit it. Kind parameters, including defaulted ones, are compile-time values. Distinct assumed/deferred length modes can still affect characteristics even though they do not distinguish generic references, which is why deduplicating otherwise equal mixed-length entries is unresolved.
 
@@ -328,6 +334,21 @@ These forms take one property from a generic dummy. They do not add a factor for
 
 `TYPEOF` / `CLASSOF` of a whole generic dummy is the intended way to say “same declared type and parameters as that argument”. The draft dropped the paper's extra constraints on what a kind selector may reference; under 15.6.2.4 p2 the body is checked **after** every generic factor has a concrete value, so `KIND(x)`, `RANK(x)`, bounds, and specification expressions are interpreted in that specific.
 
+This substitution does not waive the restrictions on dependent declarations:
+
+| Rule | Requirement in each retained declaration |
+| --- | --- |
+| C709 | An entity declared with `CLASS` or `CLASSOF` is a dummy or has `ALLOCATABLE` or `POINTER`. |
+| C710 | `TYPEOF` and `CLASSOF` appear only in type declaration or component definition statements, not, for example, as a function prefix or a type guard. |
+| C711 | The referenced data object's type and parameters have been previously declared or established by implicit typing. |
+| C712 | A `TYPEOF` reference is neither unlimited polymorphic nor of abstract type. |
+| C713 | A `CLASSOF` reference is neither assumed-type nor of intrinsic type; `CLASSOF` of `CLASS(*)` is itself unlimited polymorphic. |
+| C714 | An optional referenced object has neither an assumed nor a deferred type parameter. |
+
+For example, a common specification-part declaration using `CLASSOF(x)` is invalid when one generated specific makes `x` integer, even if other specifics make it an extensible derived type. An appropriate declaration in a retained derived-type-only `BLOCK` can instead be valid after the other generic blocks are removed. A nongeneric optional character dummy can trigger C714 even though the generic dummy is necessarily nonoptional.
+
+The prior-specification and constant-expression rules in 10.1.11 and 10.1.12 remain applicable. A runtime dummy value does not become a constant merely because the containing procedure is generic. A specification inquiry on a fixed kind or rank can be constant; an ordinary bound or length specification can instead depend on runtime properties where specification expressions permit that. Implementation dependency analysis must respect these distinctions and must not invent an ordering or value to repair an invalid dependency.
+
 ### Ranked results, locals, and named constants
 
 A function result and a local variable are never generic dummies because they are not dummy data objects. They can nevertheless have characteristics that depend on a generic dummy.
@@ -346,18 +367,37 @@ A named constant is the other legal C877 case. With positive rank, a `RANK` clau
 
 An allocatable **result** is a result characteristic, but a function reference with an allocatable result is not thereby an allocatable variable. Under 9.2, only a function reference with a data-pointer result can be a variable. `ALLOCATED(f())` is therefore invalid even when `f` has an allocatable result, because `ALLOCATED` requires an allocatable variable (17.9.13).
 
+Similarly, the argument of `RANK` must be a data object (17.9.184). Do not use `RANK(f())` on a nonpointer function value as a result oracle. Assign the result to a suitable variable and check its allocation, values, and shape, or use a permitted inquiry on the expression. The ordinary restrictions on inquiry arguments are not relaxed by generic expansion.
+
+A nonallocatable, nonpointer array result is also possible: it uses an explicit array specification rather than a `RANK` clause (C820). For example, `TYPEOF(x) :: y(SIZE(x))` can declare an automatic vector result when the inquiry is a valid specification expression. Result characteristics can include PDT lengths, polymorphism, or a procedure-pointer interface as well as data type, kind, and rank (15.3.3). They are determined for the selected specific, not used to distinguish otherwise indistinguishable generic references.
+
 ## How the specifics are built
 
 15.6.2.4 p1–p2:
 
-1. Identify each generic **property**. Every generic type spec contributes one semantic type/kind set; every generic `RANK` clause contributes one rank set. A dummy that is both contributes both factors. A dummy with a dependent type and generic rank, or generic type and dependent rank, contributes only the generic property.
-2. Expand each factor and remove duplicate semantic values within that factor. A PDT's independent kind arrays form the type/kind set before this outer product.
-3. Form the Cartesian product of all remaining factors. Fixed and dependent properties do not add factors. Equal sets on different dummies remain independent.
-4. For each tuple, interpret dependent types, kinds, ranks, lengths, bounds, dummy procedure interfaces, and result characteristics using the selected values.
+1. Identify each generic **property** and the dependencies of its domain expressions. A dummy can contribute both a type/kind domain and a rank domain. A fixed or dependent nongeneric property contributes no independent choice.
+2. Evaluate a domain when its required static properties are established. Expand its kind arrays or rank ranges and remove duplicate semantic values. Independent PDT kind arrays form a product within a type domain. A domain depending on another choice is evaluated and deduplicated separately for that choice.
+3. Enumerate every permitted tuple of choices. Independent domains form a Cartesian product. A dependent domain adds its choices for each enclosing tuple; do not replace it by a union that admits forbidden combinations.
+4. For each tuple, interpret the remaining dependent types, kinds, ranks, lengths, bounds, dummy procedure interfaces, and result characteristics using the selected values and the ordinary declaration-order rules.
 5. Delete every unselected block of every `SELECT GENERIC RANK` and `SELECT GENERIC TYPE` construct.
-6. Check all remaining statements and characteristics as an ordinary specific procedure.
+6. Check all remaining statements and characteristics as an ordinary specific procedure, and apply generic distinguishability and interface-contribution rules to the complete resulting set.
 
 The draft gives no explicit rule for a factor that becomes empty; that case is quarantined rather than folded into this settled algorithm.
+
+### Dependent generic domains
+
+An inquiry can occur inside generic syntax, not only in a nongeneric dependent declaration. For example, within a generic subprogram:
+
+```fortran
+integer, intent(in), rank(1:2)       :: x
+integer, intent(in), rank(0:rank(x)) :: y
+```
+
+After fixing `x`'s rank, `RANK(x)` is a constant inquiry for that interpretation (10.1.12). R833 permits that expression as the upper bound of the generic range. There are five rank pairs: `(1,0)`, `(1,1)`, `(2,0)`, `(2,1)`, and `(2,2)`. There is no `(1,2)` specific. This differs from `RANK(RANK(x))`, which specifies one dependent rank and adds no choice.
+
+The same staging applies to kind arrays containing inquiries or PDT kind parameters from an earlier generic dummy. An expression such as `[x%k, 1]` can collapse to one kind choice for one interpretation of `x` and have two choices for another. Deduplication is semantic and local to the evaluated domain. Cyclic or forward dependencies are not automatically permitted: they must still have an interpretation satisfying the ordinary prior-declaration and constant-expression requirements.
+
+### Independent domains
 
 The property-wise point is visible in 8.2 NOTE 1:
 
@@ -439,11 +479,25 @@ The same applies to declarations in nested `BLOCK` constructs and to unsupported
 
 ### Code generation
 
-Normatively, the semantic generic set contains every specific in the product, and 15.6.2.4 p2 requires the residual statements to conform for every one, including specifics that are never referenced. That “shall” is not a numbered constraint, so the default 4.2 diagnostic obligation and an optional enhanced rejection policy are reported separately by the suite.
+Normatively, the semantic generic set contains every permitted specific, and 15.6.2.4 p2 requires the source's residual statements to conform for every one, including specifics that are never referenced. That “shall” is not a numbered constraint. Diagnostic obligations must nevertheless be assessed against **all** of 4.2, not just its numbered-constraint category; an independently applicable constraint or detect-and-report category remains applicable inside an unused specific. The suite separates these obligations from enhanced diagnostic requests and from the intrinsic-signature classification policy below.
 
-Nothing requires one emitted machine-code body per semantic specific, eager emission, or runtime dispatch. A module file and object strategy may preserve enough information to instantiate a later use-associated combination. An internal procedure may be optimized with complete knowledge of its callers. In all cases, unavailable combinations cannot be silently omitted from semantic checking, and shared implementation code must preserve the observable per-specific interfaces, saved state, and internal-procedure identities.
+Nothing requires one emitted machine-code body per semantic specific, eager emission, or runtime dispatch. A module file and object strategy may preserve enough information to instantiate a later use-associated combination. An internal procedure may be optimized with complete knowledge of its callers. An unreferenced status cannot make a nonconforming combination conforming or waive an independently required diagnostic. Acceptance without a diagnostic for an enhanced-only case is not itself proof that the processor violates 4.2. Shared implementation code must preserve the observable per-specific interfaces, saved state, and internal-procedure identities.
 
 `SELECT GENERIC` does not change that set. It only chooses which statements appear inside each specific. It is not a device for requesting a subset of the product.
+
+### Front-end and interface checkpoints
+
+An implementation can organize the work differently, but it must preserve these distinctions:
+
+1. Parse the generic productions and retain source-level genericity flags separately for type and rank. Do not infer genericity from the final domain size, a dependent property's variation, or the concrete declaration in one expanded specific.
+2. Combine all specification statements before enforcing attribute restrictions such as C802's prohibition of an optional generic dummy. Enforce the source host's generic status for C1583 rather than losing that status when a host is lowered to ordinary specifics.
+3. Establish the permitted specialization environments using the dependency-aware rules above. Resolve semantic type identity, scoped default kinds, inherited/defaulted PDT parameters, and duplicate values rather than comparing declaration text.
+4. Within each environment, process generic selections from the outside inward. Check selectors, construct names, and guard constraints for a retained construct before selecting its block. C1161 applies to duplicate guards even outside the selector's domain. Conversely, an entire nested construct in an unselected outer block is absent; do not diagnose its residual semantic restrictions as if it survived.
+5. Check the retained procedure, including specification expressions, callback/result characteristics, purity, finalization effects, argument association, and control-flow restrictions. Lowering a selection away must not accidentally legalize a branch into its block. Ordinary `IF` constant folding does not supply generic-block pruning.
+6. Add all generated specifics to the appropriate accessible interfaces, preserving any existing named specifics. Apply the ordinary pairwise distinguishability and contribution rules to the full set, including specifics not referenced by this translation unit.
+7. Preserve the resulting explicit interfaces, specialization identities, and dependencies for later references, including use association and separate compilation. An implementation may use private symbols, serialized bodies, or shared code; none of those choices makes generated specific names available to Fortran source.
+
+Diagnostics attach to the applicable syntax rule, constraint, or detect-and-report category, not merely to the fact that expansion failed. A valid-language prerequisite and an intended diagnostic are both needed to distinguish an actual constraint implementation from rejection of unimplemented generic syntax.
 
 ## `SELECT GENERIC RANK`
 
@@ -459,7 +513,7 @@ Syntax (11.1.10):
 END SELECT [ name ]
 ```
 
-The selector is the name of a **rank-generic dummy** (C1155). The syntax has no associate name, and a section or component is not permitted. It is not a `TYPEOF` entity, not a `RANK(RANK(x))` entity, and not the function result. C1155 also does not override other restrictions on using that name: C725 prevents an assumed-type `TYPE(*)` dummy from being used as this selector. The paper's example that selects on the result is not legal in the draft; select on an otherwise permitted rank-generic dummy.
+The selector is the name of a **rank-generic dummy** (C1155). The syntax has no associate name, and a section or component is not permitted. A dummy declared `TYPEOF(x), RANK(0:2) :: y` qualifies because its rank is generic even though its type is dependent. A `RANK(RANK(x))` dummy does not qualify merely by following another dummy's rank, nor does a function result. C1155 also does not override other restrictions on using that name: C725 prevents an assumed-type `TYPE(*)` dummy from being used as this selector. The paper's example that selects on the result is not legal in the draft; select on an otherwise permitted rank-generic dummy.
 
 `RANK(*)` belongs to `SELECT RANK` (assumed-rank). It is not a `rank-spec`.
 
@@ -532,7 +586,7 @@ declared type is (colour)                ! enum or enumeration type name
 
 Under C1160, if the type has length parameters, the guard must specify every one as assumed (`*`); neither an explicit length nor deferred `:` satisfies that wording. `DECLARED TYPE IS (CHARACTER(LEN=10))` is therefore a settled C1160 violation under the intended guard syntax. For a PDT, a kind parameter that has a default may be omitted under C7121 and 7.5.9 p3, so guard kinds need not all be written explicitly; omitted kinds take their defaults. A length parameter may not be omitted merely because it has a default, because C1160 specifically requires every length parameter to be assumed.
 
-There is a separate syntax-context tension: C736 and C7124 do not clearly permit `*` in a **generic** type guard even though C1160 requires it. Fixtures that need an assumed-length generic guard are therefore quarantined as `assumed-length-guards`; the intended reading is that generic guards are an omitted context in those general restrictions.
+There is a separate syntax-context tension: C736 and C7124 do not clearly permit `*` in a **generic** type guard even though C1160 requires it. Positive fixtures that need an assumed-length generic guard are therefore quarantined as `assumed-length-guards`; the intended reading is that generic guards are an omitted context in those general restrictions. This does not quarantine negative C1160 cases using explicit, deferred, or omitted/defaulted lengths: those lengths fail C1160 under either reading and remain required-diagnostic tests.
 
 The same declared type and the same kind type parameter values must not appear in two guards (C1161). At most one default is allowed (C1162). Default is chosen only when no `DECLARED TYPE IS` guard matches, regardless of textual order. The grammar also permits an empty construct with no guards. Construct names, named `EXIT`, and branches to the end work as for the rank construct (C1163, 11.1.11.2, 11.1.14).
 
@@ -569,11 +623,11 @@ Anything that is legal for every specific (or legal inside the blocks that those
 - A type-generic assumed-rank dummy (`TYPE(... ) :: x(..)`) remains assumed-rank in each type specific; it is not expanded by actual rank. A fixed `RANK(n)` or dependent `RANK(RANK(x))` likewise does not add a rank factor.
 - After generic resolution selects a specific, all ordinary argument-association rules apply. An allocatable dummy requires an allocatable actual where 15.5.2.6 requires one; a pointer dummy requires the corresponding pointer/target properties under 15.5.2.7; an `INTENT(OUT)` or `INTENT(INOUT)` actual must be definable; and type, kind, rank, optional presence, and keywords must agree with that selected interface. Generic expansion does not weaken those checks.
 - A generic subprogram may call itself. The call is a generic reference and is resolved to one specific. `factorial(n-1)` resolves to the same type and kind. A call can also resolve to a **different** specific, for example an integer specific calling the real specific with `REAL(x)`.
-- A dummy procedure must have an explicit interface (C1585). After the surrounding generic factors are fixed, the dummy procedure's argument and result characteristics must form a valid explicit interface for that specific. An implicit-interface `EXTERNAL` dummy is not enough, and the generic name itself cannot be used as a `PROCEDURE(interface-name)` because it is not a specific interface name.
+- A dummy procedure must have an explicit interface (C1585). After the surrounding generic factors are fixed, the dummy procedure's argument and result characteristics must form a valid explicit interface for that specific. An implicit-interface `EXTERNAL` dummy is not enough. An identifier denoting only the generated generic set cannot be a `PROCEDURE(interface-name)`; an existing named specific sharing that identifier is a separate case.
 - A function result is not a generic dummy, but its declared type, kind, length, rank, allocatable/pointer status, and dependent bounds are characteristics of each generated function (15.3.3). `TYPEOF`, `KIND`, and a C877-permitted allocatable or pointer `RANK` clause can make those characteristics follow a generic dummy.
 - Allocation, deallocation, finalization, polymorphic dynamic type, and `INTENT(OUT)` entry effects are the ordinary effects of the selected specific. For example, finalization of an `INTENT(OUT)` actual occurs for the generated declared type, and allocating a polymorphic rank-generic dummy with `SOURCE=` establishes the normal dynamic type and shape.
 - An internal procedure of a generic subprogram belongs to the generated specific whose host it uses. It may use `TYPEOF` or another property of a host generic dummy, but it must not itself be generic (C1583). An implementation that shares code still has to preserve distinct semantic internal-procedure identities.
-- The subprogram may be `PURE` or `SIMPLE` when each specific is. `ELEMENTAL` is allowed when each specific meets 15.9.1 (scalar nonallocatable nonpointer noncoarray dummies, scalar result, intents present). An elemental specific is still elemental: an array actual is an elemental reference, not a generic-rank match. Generic rank and elemental rank are different mechanisms.
+- The subprogram may be `PURE` or `SIMPLE` when each specific is. `ELEMENTAL` is allowed when each specific meets 15.9.1 (scalar nonallocatable nonpointer noncoarray dummies, scalar result, intents or `VALUE` present). C15138 additionally restricts mentions of dummy arguments in result specification expressions to suitable value-independent specification inquiries: character `LEN(x)` can be permitted, whereas using an integer dummy's value as a result length is not. An elemental specific is still elemental: an array actual is an elemental reference, not a generic-rank match. Generic rank and elemental rank are different mechanisms.
 - Host association, use association, `BLOCK`, and specification expressions work as they do inside the specific you would have written by hand.
 - A saved local is per specific. Calling the integer specific does not advance a `SAVE` counter in the real specific, even if both specifics share one physical implementation body.
 
@@ -706,12 +760,14 @@ A `GENERIC` subprogram may also be an ordinary module procedure of a submodule. 
 
 ## What the generic name is not
 
-The specifics have no names. The generic name cannot be used where a specific procedure is required.
+The newly generated specifics have no visible names. An identifier denoting only that generic set cannot be used where a specific procedure is required.
 
 - It is not an actual argument (C1537) and not a procedure-pointer target (10.2.2.4). That includes a generic subprogram with no generic dummy, whose single specific is still unnamed (15.6.2.4 NOTE 7).
-- It is not an `interface-name` for a procedure declaration such as `PROCEDURE(generic_name)`, because that context requires an abstract interface or a specific procedure with an explicit interface. Nor can it be supplied to `C_FUNLOC`, which requires an interoperable specific procedure rather than a generic set.
+- It is not an `interface-name` for a procedure declaration such as `PROCEDURE(generic_name)`, because that context requires an abstract interface or a specific procedure with an explicit interface. Nor can it be supplied to `C_FUNLOC`, which requires a procedure rather than a generic set. In this draft, 19.2.3.6 p3 does **not** require that procedure to be interoperable; an associated procedure pointer is also permitted, and the argument cannot be coindexed.
 - It is not a type-bound procedure (C798). A type-bound `GENERIC` statement names specific bindings of that type, not a generic subprogram.
 - `MODULE PROCEDURE` shall not name it (C1510). `PROCEDURE` without `MODULE`, and a `GENERIC` statement, may name it when the generic specification is an operator, assignment, or defined input/output. They shall not name it when the generic specification is another generic name (C1505, C1512). Defined input/output adds every specific, and each specific has to have the `dtv` interface in 12.6.4.8.2. An extensible `dtv` type uses `CLASS` (C1236).
+
+These statements do not erase an existing named specific when a generic is extended. Under 15.4.3.4.1 p5 and 20.3.1 p3, an identifier can denote both a generic interface and one named procedure in it. In a procedure-actual context, 15.5.2.10 p4 selects that named procedure. The same existing specific can remain a valid procedure-pointer target or explicit interface name; the unnamed generated alternatives do not become addressable. `tests/valid/audit_integration_same_name_specific.f90` checks ordinary calls, procedure actuals, renaming, pointer/interface contexts, and a noninteroperable `C_FUNLOC` round trip after an auto-generic extension.
 
 The draft syntax permits `GENERIC` and `BIND(C)` on the same initial statement and contains no blanket prohibition. Each residual specific still has to satisfy the interoperability requirements. A nonempty explicit `NAME=` applied to several generated procedures appears to give several entities one binding label, conflicting with global-identifier uniqueness in 20.2. By contrast:
 
@@ -838,6 +894,7 @@ Clause 4.2 requires a processor to contain the capability to detect and report v
 | C802 | A generic declaration names one nonoptional dummy data object: not a local, function result, optional dummy, or two entities. |
 | C803, C804 | An entity `*char-length` is used only when all listed types are character and its value is `*` or `:`. |
 | C707, C715 | `TYPE` does not produce an abstract residual declaration; `CLASS` lists only extensible types. |
+| C709-C714 | Dependent `TYPEOF`/`CLASSOF` declarations preserve placement, prior-declaration, polymorphism, type-category, and optional-parameter restrictions in each retained specific. |
 | C716 | A generic type list with no kind-generic item contains more than one item. |
 | C717, C718 | Length parameters in a generic type spec are assumed or deferred; an intrinsic generic kind expression is rank one. |
 | C725, C845 | Existing assumed-type and assumed-rank name-use restrictions continue to apply. `TYPE(*)` is not a permitted `SELECT GENERIC RANK` selector, and an assumed-rank type-generic dummy is not a permitted direct `SELECT GENERIC TYPE` selector under C845's literal list. |
@@ -851,18 +908,18 @@ Clause 4.2 requires a processor to contain the capability to detect and report v
 | C1511, C1513 | A procedure already specified in an accessible interface under a generic identifier is not inserted again through an interface block or `GENERIC` statement. |
 | C1514-C1517 | Every pair sharing a generic identifier satisfies the relevant operator, assignment, I/O, or named-generic distinguishability rule. |
 | C7132 | Constructor-like syntax is disambiguated in favor of a resolvable same-named generic function reference; it does not prohibit defining that overlapping generic interface. |
-| C1537, C798 and procedure-pointer constraints | The generic identifier is not a specific procedure actual argument, type-bound target, or procedure-pointer target. |
+| C1537, C798 and procedure-pointer constraints | An identifier denoting only the generated generic set is not a specific procedure actual argument, type-bound target, or procedure-pointer target. An existing same-named specific is not removed by extending its generic interface. |
 | C1561, C1564 | A separate module definition has the same semantic characteristics and dummy names as its interface; `GENERIC` appears only in the permitted module/internal or `MODULE` interface contexts. |
 | C1582-C1585, C1589 | A generic is module or internal, has no generic internal subprogram, no alternate-return dummy, explicit interfaces for dummy procedures, and no `ENTRY`. |
 | C1555-C1557 | Prefix specifications are not duplicated and contradictory purity or recursion prefixes are not combined. |
-| C15135-C15137 | Every elemental specific has eligible scalar dummies and result and the required intents. |
+| C15135-C15138 | Every elemental specific has eligible scalar dummies and result, the required intents or `VALUE`, and permitted inquiries in result specification expressions. |
 | 4.2(4) | Use of an unsupported intrinsic kind value is detectable and reportable. A runtime branch does not suppress this obligation. |
 
 The BNF spelling `DECLARED TYPE IS` / `DECLARED TYPE DEFAULT` is settled despite C1162's shortened phrase “TYPE DEFAULT”. Similarly, C877 controls the invalid result declarations in 15.6.2.4 NOTES 7 and 8; examples do not override a numbered constraint.
 
 ## Unnumbered requirements and enhanced diagnostics
 
-These rules affect program conformance, but their violations are not automatically among the diagnostics required by 4.2. The optional enhanced profile can demand a matching diagnostic and, in a still stricter mode, unsuccessful translation.
+These rules affect program conformance, but their violations are not automatically among the diagnostics required by 4.2. The strict profile requests diagnostics and unsuccessful translation for settled enhanced cases. Explicitly selected draft observations also run in conformance mode, where a matching diagnostic is sufficient; selecting a reading and requiring unsuccessful translation are separate policies.
 
 | Text | Requirement |
 | --- | --- |
@@ -875,6 +932,16 @@ These rules affect program conformance, but their violations are not automatical
 | Generic resolution | A reference must resolve to an eligible specific, intrinsic fallback, or constructor interpretation. |
 
 Empty expansions and `GENERIC` plus `BIND(C)` are **not** in this table because the draft does not establish the blanket outcomes previously asserted for them.
+
+### Intrinsic-signature diagnostic policy
+
+The mixed-kind `MOD`, noninteger `IAND`, and integer `SQRT` residuals are nonconforming: they violate the argument requirements in 17.9.158, 17.9.109, and 17.9.215 respectively. Their being unreferenced, or being inside an ordinary constant-false `IF`, does not change program conformance.
+
+Their **diagnostic classification** is a separate question. Clause 4.2 p2(7) requires the capability to report a processor-provided nonstandard intrinsic, including one sharing a standard name but having different requirements. Clause 4.2 p4 discusses such additional intrinsic procedures. If a processor implements mixed-kind `MOD` as an extension, that detect-and-report obligation applies.
+
+An invalid reference to the standard intrinsic is not necessarily evidence that the processor provides such an extension. The four fixtures `mod_requires_same_kind`, `reject_constant_if_not_pruned`, `reject_selected_generic_block_invalid`, and `reject_unused_specific_invalid` do not establish which interpretation an accepting processor used, and the draft does not explicitly equate every accepted invalid reference with provision of a nonstandard intrinsic. This suite therefore conservatively leaves these four diagnostic assertions in the enhanced profile, **without claiming that 4.2(7) never applies**. This classification decision remains open to a committee interpretation; default results do not certify this diagnostic category.
+
+Required residual diagnostics are tested independently through numbered constraints, unsupported representation kinds, and applicable name/label scope rules. An implementer must not use this conservative policy as permission to omit those checks. No-matching-specific errors and runtime violations of an intrinsic's value restrictions likewise need their own applicable-rule assessment, not an automatic required/enhanced classification based merely on the word "shall".
 
 ## Changes since 25-156r1
 
@@ -899,10 +966,11 @@ These rows are non-gating by default. The suite records an intended reading only
 | Reading ID | Draft tension | Treatment |
 | --- | --- | --- |
 | `generic-interface-declarations` | C801 permits a generic declaration only in a generic subprogram, while 15.4.3.2 p4 permits a `MODULE GENERIC` interface body and 15.4.3.4.1 p2 says that body contributes all specifics. | Preserve the contribution rule, but quarantine interface bodies that need generic dummy declarations. |
-| `assumed-length-guards` | C1160 requires every length parameter in a generic guard to be assumed. C736 permits `*` in a type guard specifically referencing 11.1.13, C7124 omits guards for PDT parameters, and 7.2 describes assumed values only for dummies, runtime `SELECT TYPE` associates, and character named constants. | Intended reading: generic guards are also permitted contexts; guard lengths are `*`, not `:`, while kind parameters may use declared defaults. |
+| `assumed-length-guards` | C1160 requires every length parameter in a generic guard to be assumed. C736 permits `*` in a type guard specifically referencing 11.1.13, C7124 omits guards for PDT parameters, and 7.2 describes assumed values only for dummies, runtime `SELECT TYPE` associates, and character named constants. | Positive assumed-length guards use this reading. Explicit, deferred, or omitted/defaulted guard lengths remain settled C1160 negatives, not draft observations. |
 | `empty-expansion` | `RANK(1:0)` denotes no ranks, and a rank-one kind array can have size zero, but no explicit rule requires a nonempty factor or generic set. | Do not require either acceptance or rejection. |
 | `generic-bind-c` | Syntax allows both prefixes. Multiple specifics with one nonempty explicit label conflict with 20.2, but singleton expansion and `NAME=""` do not have that duplicate-label problem; unnamed-specific default labels are also unclear. | Exercise individual cases only under the selected reading; no blanket ban. |
-| `extended-rank-limit` | C826 says rank plus corank is at most 15; `MAX_RANK` examples describe rank and corank 24. | Default to literal bounds satisfying both. Processor-advertised ranks above 15 are opt-in. |
+| `extended-rank-limit` | C826 says rank plus corank is at most 15; `MAX_RANK` examples describe rank and corank 24. | Observe acceptance through processor-advertised maxima. This reading does not also require rejection under the literal bound. |
+| `literal-rank-limit` | The alternative reading retains C826's written bound even when a processor advertises extensions. | Observe diagnosis of rank plus corank above 15. Mutually exclusive with `extended-rank-limit` when gating; portable settled tests satisfy both bounds. |
 | `character-generic-parse` | `CHARACTER(LEN=*)` or `CHARACTER(*)` with no kind expression is read as a singleton generic intrinsic spec. | The positive observation uses `DECLARED TYPE DEFAULT`, avoiding the separate assumed-length-guard question. |
 | `character-ordinary-parse` | The same token sequence is read as the long-standing ordinary assumed-length character declaration and is not type-generic. | The negative selector observation also uses `DECLARED TYPE DEFAULT`, isolating parsing from C736/C1160. |
 | `mixed-length-dedup` | 7.3.2.2 p3 collapses duplicate type/kind combinations but does not say which assumed/deferred length mode remains when otherwise equal entries differ in mode. | Do not invent a retained mode or claim the entries necessarily remain distinct. |
@@ -911,15 +979,15 @@ These rows are non-gating by default. The suite records an intended reading only
 
 Two nearby issues are **not** left unresolved here. C1162's shortened words do not replace the R1157 BNF, and C877 controls ranked results despite the invalid examples in NOTES 7 and 8. A guard outside the dummy's set and a selection with no matching guard are also explicitly valid consequences of the selection semantics.
 
-The two character parse readings can be selected together for non-gating comparison. A runner profile does not permit `--gate-drafts` to gate both mutually exclusive readings in the same run; either can be gated separately as an explicit profile policy, without converting it into settled conformance.
+The two character parse readings can be selected together for non-gating comparison, as can the two rank-limit readings. A runner profile does not permit `--gate-drafts` to gate both members of either mutually exclusive pair in the same run; one can be gated separately as an explicit profile policy, without converting it into settled conformance. Selecting a draft explicitly also enables its enhanced-diagnostic observations; `--strict` separately requires unsuccessful translation.
 
 ## Tests
 
 The permanent requirement index is [conformance-coverage.md](conformance-coverage.md). Fixture metadata, not directory name alone, determines capability requirements, diagnostic class, draft reading, expected phase, runtime marker, and image count.
 
-The reconciled inventory contains 267 cases and 278 Fortran sources: 74 positive cases, 191 compile-time diagnostic cases, and 2 expected runtime-termination cases. Twenty-three cases are draft-tagged. One positive case, `valid/language_array_domains_expanded.f90`, is deliberately ordinary explicit-specialization control code and is not generic-subprogram execution. `tests/run.sh check` reports zero metadata errors and zero warnings.
+The current inventory and validation evidence are maintained in the coverage matrix, rather than inferred from file counts or repeated here. `tests/run.sh list --json` exposes every case's source files and metadata. Ordinary explicit-specialization controls are identified separately: their success validates an oracle or baseline semantics, not generic-subprogram execution.
 
-`tests/run.sh` remains the entry point to a Python 3.9-compatible standard-library backend. It uses isolated work directories, validates compiler/source/output existence, enforces timeouts, handles quoted compiler wrappers and flags, and treats a directory of `.f90` or `.f` sources as one separately compiled case in lexical order. Test-relative selectors and paths containing spaces are supported.
+`tests/run.sh` remains the entry point to a Python 3.9-compatible standard-library backend. It uses isolated work directories, enforces timeouts, handles quoted compiler wrappers and flags, and treats a source directory as one separately compiled case in lexical order. Optional `.c` helpers are compiled with `CC`/`CFLAGS` (or `--cc`/`--cflags`); all objects are linked with the Fortran compiler. Only selected mixed-language cases require the companion C command. Test-relative selectors and paths containing spaces are supported. Positive cases have a main program and are linked and run; there is no compile-only positive classification.
 
 ```sh
 ./tests/run.sh check
@@ -962,16 +1030,26 @@ The profiles have different claims:
 
 - **Conformance** runs settled positive cases and verifies required diagnostics. A matching diagnostic can satisfy the 4.2 detect-and-report obligation even when a compiler continues and returns status zero.
 - **Strict/enhanced diagnostics** can additionally require unsuccessful translation and request diagnostics for unnumbered requirements.
-- **Draft readings** are selected with `--draft` and are non-gating by default. `--gate-drafts` can make selected results gating for that runner profile, but this policy never makes the interpretation settled standard conformance.
+- **Draft readings** are selected with `--draft` and are non-gating by default. Explicit selection also runs their enhanced diagnostic observations. `--gate-drafts` can make selected results gating for that runner profile, but this policy never makes the interpretation settled standard conformance or by itself require a nonzero compiler status.
 
-A negative case must match the intended diagnostic and phase. Rejection for unknown generic syntax, an unrelated source error, a missing-main link failure, or echoed source text is not a pass. Link or compile-or-link expectations are used only when that is the rule being tested.
+A negative case must match the intended diagnostic and phase. Rejection for unknown generic syntax, an unrelated source error, a missing-main link failure, or echoed source text is not a pass. A matching compile-phase diagnostic does not require an object file when no later phase needs it. Link or compile-or-link expectations are used only when that is the rule being tested, and artifacts needed for those phases remain mandatory.
 
-Runtime error-termination cases print an exact `TEST-STOP:` line, execute `FLUSH(output_unit)` so the marker survives termination, and then execute the intended `ERROR STOP`; they print `TEST-UNEXPECTED-RETURN:` if execution continues. The runner parses that actual statement and calibrates the same literal stop-code form—absent, character, or integer—and the same literal `QUIET=` value with the same compiler, flags, and launcher. It does not require one fixed diagnostic message. Dynamic stop codes or `QUIET` expressions cannot be calibrated by this profile. Clause 11.4 makes the externally observed stop code and process status processor dependent; neither “nonzero below 128” nor any fixed signal convention is a portable Fortran requirement.
+Every positive declares a `TEST-PASS` identifier and prints its exact completion line only after all checks, before the main program's `CONTAINS` or end. The runtime profile requires status zero, exactly one such line per configured image, and no different `TEST-PASS` marker. Status zero alone is insufficient because a failed assertion can execute `ERROR STOP 0`. This status-zero convention is an execution-profile convention, not an additional Fortran language requirement.
 
-Kind-family fixtures use `INTEGER_KINDS`, `REAL_KINDS`, `LOGICAL_KINDS`, and `CHARACTER_KINDS`, and generated callers exercise **every reported kind value**. Real-kind coverage includes corresponding complex specifics. Generated state checks distinguish each kind, each intrinsic type, scalar versus rank one, and their joint type/kind/rank product. `INT32`, `INT64`, `REAL32`, `REAL64`, ASCII, and ISO 10646 are optional capabilities; zero is a valid supported kind, while negative named-kind values mean unavailable. Missing optional capabilities produce explicit skips, not false full-coverage claims.
+Runtime error-termination cases print an exact `TEST-STOP:` line, execute `FLUSH(output_unit)` so the marker survives termination, and then execute the intended `ERROR STOP`; they print `TEST-UNEXPECTED-RETURN:` if execution continues. The runner parses that actual statement and calibrates the same literal stop-code form—absent, character, or integer—and the same literal `QUIET=` value with the same compiler, flags, and launcher. It does not require one fixed diagnostic message or exclude reached, calibrated statuses 0, 126, or 127. Dynamic stop codes or `QUIET` expressions cannot be calibrated by this profile. Clause 11.4 makes the externally observed stop code and process status processor dependent; neither “nonzero below 128” nor any fixed signal convention is a portable Fortran requirement.
 
-The generated rank program invokes every generic specific from rank zero through the selected bound and invokes each twice to verify per-rank saved state; merely constructing one ordinary array at the highest rank is not counted as intervening generic coverage. The portable profile uses a bound satisfying both C875 and the written C826 limit. Larger processor-advertised ranks are exercised only with the `extended-rank-limit` reading. Multi-image fixtures similarly require a configured launcher; absence of one is an explicit skip.
+For selective multi-image termination, `TEST-STOP-IMAGE: N` declares the one stopping image, within `TEST-IMAGES`; absent metadata preserves all-image calibration. The selected-image calibration mirrors the initial synchronization, literal stop on image N, and waiting images' `SYNC ALL(STAT=...)`. Exactly one reached-stop marker is required. A waiter returning zero or a stopped/failed-image status produces a flushed unexpected-return marker, distinguishing a normal-STOP mutation from error termination. A different processor-dependent synchronization error does not establish that violation: it emits `TEST-INCONCLUSIVE:` (or the calibration counterpart) and produces an explicit inconclusive error, never a passing result from a secondary error termination. Simulated launchers validate this protocol but do not establish real multi-image propagation.
+
+Kind-family fixtures use `INTEGER_KINDS`, `REAL_KINDS`, `LOGICAL_KINDS`, and `CHARACTER_KINDS`, and generated callers exercise **every reported kind value**. Real-kind coverage includes corresponding complex specifics. Integer boundaries/signs, real/complex precision-sensitive values, both logical truth values, and rank-two payload copies discriminate implementations that preserve a declared kind but narrow its values. State checks distinguish each kind, intrinsic type, and scalar/vector/matrix combination; static multi-dummy and PDT fixtures additionally test the complete specialization key and properties that must not add a key factor.
+
+Character nonzero ordinals are selected only for proven system/default, ASCII, or ISO 10646 repertoires. Opaque additional kinds retain ordinal-zero transport, length, kind, shape, and state coverage; generated details disclose this fallback and distinguish repeated checks from distinct payloads. They do not claim full character repertoire or storage-width coverage. `INT32`, `INT64`, `REAL32`, `REAL64`, ASCII, and ISO 10646 are optional capabilities; zero is a valid supported kind, while negative named-kind values mean unavailable. Inventory order and kind identifiers' magnitudes imply neither representation range nor storage width. Missing optional capabilities produce explicit skips, not false full-coverage claims.
+
+The generated portable rank program invokes every generic specific from rank zero through fifteen repeatedly to verify per-rank saved state. Bounded multidimensional payloads activate the outermost axis, and dimension-one stride-two actuals check noncontiguous access as well as contiguous element order. The manifest states the tested shapes, active axes, and layouts without claiming every stride-axis combination. Merely constructing one ordinary array at the highest rank is not counted as intervening generic coverage. Invalid reported rank minima fail rather than shrinking the generated domain.
+
+Selecting `extended-rank-limit` adds the separate `@generated/processor-rank-extended` case and `processor_rank_extended_generated.f90` artifact. It never changes the portable case's gating status. When `MAX_RANK()` is no greater than fifteen, the requested extended case is explicitly unavailable/skipped. Generation manifest version 2 records selection, availability, source, and skip reason; forced regeneration removes a stale extended artifact. The opposing literal-bound negative uses `literal-rank-limit`. Multi-image fixtures similarly require a configured launcher; absence of one is an explicit skip.
+
+Run JSON schema version 2 separates `profile_success` (some case executed and no gating failure) from `coverage_complete` (all selected coverage cases executed). Completeness of execution does not mean all results passed, and profile success can coexist with explicit skips or non-gating observation failures. Exit status 0 reports a successful executed profile, 1 reports gating failures, and 2 reports a fatal configuration or no executed case. The README describes the remaining summary counters and compiler/launcher configuration.
 
 Isolated probes on 22 September 2026 confirmed that the installed gfortran 16.1, Flang 22 development build, and LFortran 0.66 development build all reject even a `GENERIC` function with no generic dummy. The same installations also lack `TYPEOF`, `RANK` clauses, `ISO_FORTRAN_ENV`'s `MAX_RANK`, and `DEFAULT KIND`. Their rejection of a new-syntax negative fixture therefore does **not** validate that fixture's intended rule.
 
-Local validation completed 25 runner self-tests, and the ordinary `language_array_domains_expanded` control compiled and ran successfully with all three installed compilers. No `GENERIC` fixture execution has been validated locally. Until prerequisite and diagnostic gating establishes that a compiler reached the rule under test, repetitive full-suite attempts with those installations add no feature-level evidence. Runner self-tests, metadata checks, ordinary Fortran controls, and manually written explicit-specialization equivalents validate the harness and ordinary semantics only. No finite suite proves complete conformance or absence of missing corner cases.
+Local validation results, including ordinary-control failures, are recorded in the coverage matrix. No `GENERIC` fixture execution has been validated locally. Until prerequisite and diagnostic gating establishes that a compiler reached the rule under test, repetitive full-suite attempts with those installations add no feature-level evidence. Runner self-tests, metadata checks, ordinary Fortran controls, and manually written explicit-specialization equivalents validate the harness and ordinary semantics only. A control is not weakened to hide a baseline compiler defect. No finite suite proves complete conformance or absence of missing corner cases.

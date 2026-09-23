@@ -1,4 +1,5 @@
 ! TEST-RULE: R831 R832 R833 R1150 R1152 11.1.10.2
+! TEST-PASS: select_rank_gaps
 ! A rank that matches no guard, and no RANK DEFAULT, selects nothing
 ! (11.1.10.2). A guard rank outside the dummy's set never matches. That
 ! block is deleted from every specific, so it may use syntax that is illegal
@@ -38,4 +39,5 @@ program select_rank_gaps_p
   if (unmatched(r2) /= 0) error stop "rank 2 unmatched"
   if (outside(0) /= 1) error stop "outside rank 0"
   if (outside(s1) /= 0) error stop "outside rank 1 uses no default"
+  print '(a)', 'TEST-PASS: select_rank_gaps'
 end program

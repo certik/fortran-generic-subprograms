@@ -1,4 +1,5 @@
 ! TEST-RULE: C877 8.5.17 11.1.10 15.6.2.4
+! TEST-PASS: rank_bounds_and_result
 ! Generic rank: assumed-shape lower bounds are 1, the result is allocatable
 ! deferred-shape, and each SELECT GENERIC RANK block is type-checked only
 ! for its own rank.
@@ -43,11 +44,17 @@ program rank_bounds_p
   implicit none
   integer :: v(0:2), m(0:1, 3:4)
   integer :: lb(2), ub(2), ext(2)
-  integer, allocatable :: cv(:), cm(:, :), section(:, :)
+  integer, allocatable :: cs, cv(:), cm(:, :), section(:, :)
   integer, allocatable :: empty_first(:, :), empty_second(:, :)
   v = [10, 20, 30]
   m = reshape([1, 2, 3, 4], [2, 2])
-  if (rank(copy(5)) /= 0) error stop "copy rank 0"
+  ! RANK requires a data object (17.9.184), but a function value is only a
+  ! data entity (3.41, 3.42). Assigning to an allocatable scalar requires a
+  ! scalar result (10.2.1.2), and SHAPE accepts the value itself.
+  cs = copy(5)
+  if (.not. allocated(cs)) error stop "copy scalar allocation"
+  if (cs /= 5) error stop "copy scalar variable"
+  if (size(shape(copy(5))) /= 0) error stop "copy rank 0"
   if (copy(5) /= 5) error stop "copy scalar"
 
   cv = copy(v)
@@ -99,4 +106,5 @@ program rank_bounds_p
   if (any(shape(empty_second) /= [2, 0])) error stop "empty second extent"
   if (any(lbound(empty_second) /= [1, 1])) error stop "empty second lbound"
   if (any(ubound(empty_second) /= [2, 0])) error stop "empty second ubound"
+  print '(a)', 'TEST-PASS: rank_bounds_and_result'
 end program

@@ -1,4 +1,5 @@
 ! TEST-RULE: 7.5.6 9.7.1 15.5.2.13 15.6.2.4
+! TEST-PASS: integration_finalization_polymorphism
 ! Generated specifics finalize INTENT(OUT) actuals independently. A
 ! rank-generic polymorphic allocatable is source-allocated and reallocated.
 module integration_finalization_polymorphism_m
@@ -122,4 +123,5 @@ program integration_finalization_polymorphism_p
   class default
     error stop "vector reallocation dynamic type"
   end select
+  print '(a)', 'TEST-PASS: integration_finalization_polymorphism'
 end program

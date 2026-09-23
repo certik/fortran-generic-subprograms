@@ -1,5 +1,6 @@
 ! TEST-RULE: R712 R713 R714 C719 C721 C722 C723 15.6.2.4
 ! TEST-REQUIRES: int32 int64
+! TEST-PASS: parameterized_derived
 ! Kind-parameter arrays multiply; a scalar kind does not. Length parameters
 ! are assumed (7.3.2.2 NOTE 2, C722, C723). Requires kind(0.0) /= kind(0.0d0).
 module parameterized_derived_m
@@ -66,4 +67,5 @@ program parameterized_derived_p
   call fill_u(u64)
   if (kind(u32%v) /= int32 .or. any(u32%v /= 4_int32)) error stop "u int32"
   if (kind(u64%v) /= int64 .or. any(u64%v /= 5_int64)) error stop "u int64"
+  print '(a)', 'TEST-PASS: parameterized_derived'
 end program

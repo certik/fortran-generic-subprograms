@@ -1,5 +1,6 @@
 ! TEST-RULE: R707 R708 C718 15.6.2.4
 ! TEST-REQUIRES: real32 real64
+! TEST-PASS: real_complex_kinds
 ! REAL(REAL_KINDS) and COMPLEX([REAL32, REAL64]) (7.3.2.2).
 ! Every real kind is a specific of twice; the program also exercises two
 ! named, processor-optional kinds declared in TEST-REQUIRES.
@@ -50,4 +51,5 @@ program real_complex_kinds_p
   if (add1(c32) /= cmplx(3.0_real32, 3.0_real32, kind=real32)) error stop "complex32"
   if (add1(c64) /= cmplx(3.0_real64, 3.0_real64, kind=real64)) error stop "complex64"
   if (kind(add1(c64)) /= real64) error stop "complex kind"
+  print '(a)', 'TEST-PASS: real_complex_kinds'
 end program

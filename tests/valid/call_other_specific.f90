@@ -1,4 +1,5 @@
 ! TEST-RULE: 15.6.2.2 15.6.2.4 15.6.2.5
+! TEST-PASS: call_other_specific
 ! One specific may call a different specific of the same generic name.
 ! The integer block is not part of the real specific, so this is not recursive.
 module call_other_specific_m
@@ -63,4 +64,5 @@ program call_other_specific_p
   if (rank_bounce([5]) /= 5) error stop "vector to scalar recursion"
   if (kind_bounce(7, 4) /= 11) error stop "cross-kind recursion"
   if (kind_bounce(2.0, 3) /= 5) error stop "cross-kind reverse recursion"
+  print '(a)', 'TEST-PASS: call_other_specific'
 end program

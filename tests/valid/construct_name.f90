@@ -1,4 +1,5 @@
 ! TEST-RULE: C1157 C1158 C1163 R1150 R1155
+! TEST-PASS: construct_name
 ! Construct names on SELECT GENERIC RANK and SELECT GENERIC TYPE (C1157, C1163).
 module construct_name_m
   implicit none
@@ -28,4 +29,5 @@ program construct_name_p
   if (code([5]) /= 2) error stop "integer rank1"
   if (code(1.0) /= 3) error stop "real scalar"
   if (code(r) /= 3) error stop "real rank1"
+  print '(a)', 'TEST-PASS: construct_name'
 end program

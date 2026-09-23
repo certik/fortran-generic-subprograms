@@ -1,5 +1,6 @@
 ! TEST-RULE: R708 R710 R711 C718 C1159 R1157
 ! TEST-DRAFT: character-generic-parse
+! TEST-PASS: language_character_generic_parse
 ! CHARACTER(LEN=*) without a kind array has both the long-standing ordinary
 ! parse and the new generic-character parse. This test intentionally depends
 ! on the generic parse and is therefore never an untagged conformance oracle.
@@ -20,4 +21,5 @@ program language_character_generic_parse_p
   use language_character_generic_parse_m
   implicit none
   if (parsed_as_generic("parse") /= 5) error stop "character generic parse"
+  print '(a)', 'TEST-PASS: language_character_generic_parse'
 end program

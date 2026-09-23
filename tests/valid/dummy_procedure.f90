@@ -1,5 +1,6 @@
 ! TEST-RULE: C1585 15.3.2.3 15.4.3.6 15.6.2.4
 ! TEST-REQUIRES: int32 int64
+! TEST-PASS: dummy_procedure
 ! Dummy callbacks have explicit interfaces specialized from the generic
 ! data dummy. Function results, subroutines, procedure declarations,
 ! procedure pointers, and an optional nongeneric callback all execute.
@@ -121,6 +122,7 @@ program dummy_procedure_p
   if (.not. allocated(result64)) error stop "rank2 callback result allocation"
   if (any(shape(result64) /= [2, 2])) error stop "rank2 callback result shape"
   if (any(result64 /= matrix64 + 1_int64)) error stop "rank2 callback result values"
+  print '(a)', 'TEST-PASS: dummy_procedure'
 contains
   pure function double32(a) result(b)
     integer(int32), intent(in) :: a

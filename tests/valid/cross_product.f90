@@ -1,4 +1,5 @@
 ! TEST-RULE: R705 R831 11.1.10 11.1.11 15.6.2.4
+! TEST-PASS: cross_product
 ! Two independent generic dummies: 2 types x 2 ranks x 2 types x 2 ranks
 ! = 16 specifics. All sixteen are referenced for both specialization tags and
 ! transported scalar/array values (15.6.2.4 p1).
@@ -118,4 +119,5 @@ program cross_product_p
   if (transported(i1, r1) /= 96.0) error stop "value i1 r1"
   if (transported(r0, r1) /= 21.0) error stop "value r0 r1"
   if (transported(r1, r1) /= 66.0) error stop "value r1 r1"
+  print '(a)', 'TEST-PASS: cross_product'
 end program

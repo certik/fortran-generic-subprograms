@@ -1,4 +1,5 @@
 ! TEST-RULE: C725 C845 R828 7.3.2.3 8.5.8.7
+! TEST-PASS: language_array_domains_expanded
 ! Ordinary/manual specialization control for language_array_domains.f90.
 ! The six concrete type/rank procedures map the type-generic assumed-rank
 ! family, and the two TYPE(*) procedures use only the permitted RANK inquiry.
@@ -94,4 +95,5 @@ program language_array_domains_expanded_p
   if (assumed_type_rank_control(b) /= 0) error stop "type star scalar control"
   if (assumed_type_rank_control(ba) /= 1) error stop "type star vector control"
   if (assumed_type_rank_control(i) /= 1) error stop "type star intrinsic control"
+  print '(a)', 'TEST-PASS: language_array_domains_expanded'
 end program

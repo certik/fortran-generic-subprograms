@@ -1,4 +1,5 @@
 ! TEST-RULE: C1511 C1513 15.4.3.4.5 15.6.2.4 NOTE4
+! TEST-PASS: extend_generic
 ! Specifics from an interface and from several generic subprograms of the
 ! same name form one generic (15.6.2.4 NOTE 4). Ranks and types disambiguate.
 module extend_generic_m
@@ -55,4 +56,5 @@ program extend_generic_p
   if (any(rv /= 3.0)) error stop "real rank1"
   call set_to(rm)
   if (any(rm /= 3.0)) error stop "real rank2"
+  print '(a)', 'TEST-PASS: extend_generic'
 end program

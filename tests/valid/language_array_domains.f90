@@ -1,4 +1,5 @@
 ! TEST-RULE: R705 C724 C725 C845 R828 R831 R1150 R1160 8.5.8.7 11.1.12
+! TEST-PASS: language_array_domains
 ! Type-generic dummies retain ordinary explicit-shape, assumed-shape,
 ! assumed-size, and assumed-rank declarations. The assumed-rank dummy uses
 ! runtime SELECT RANK; its rank does not become a specialization constant.
@@ -120,4 +121,5 @@ program language_array_domains_p
   if (assumed_type_rank(b) /= 0) error stop "type star derived scalar"
   if (assumed_type_rank(ba) /= 1) error stop "type star derived array"
   if (assumed_type_rank(i) /= 1) error stop "type star intrinsic array"
+  print '(a)', 'TEST-PASS: language_array_domains'
 end program

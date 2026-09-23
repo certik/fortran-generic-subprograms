@@ -1,5 +1,6 @@
 ! TEST-RULE: 14.2.2 15.6.2.4 15.6.2.5
 ! TEST-REQUIRES: int32 int64 real32 real64
+! TEST-PASS: save_per_specific
 ! SAVE state is distinct for every type/kind/rank specific. Module host
 ! state is shared, and aliases of one generic reach the same specific state.
 module save_per_specific_m
@@ -39,4 +40,5 @@ program save_per_specific_p
   if (hit([2_int32]) /= 1002) error stop "int32 rank1 second"
   if (hit_alias([2.0_real64]) /= 1102) error stop "alias shares real64 rank1"
   if (host_count() /= 11) error stop "shared module host state"
+  print '(a)', 'TEST-PASS: save_per_specific'
 end program

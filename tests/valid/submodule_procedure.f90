@@ -1,4 +1,5 @@
 ! TEST-RULE: C1564 15.6.2.4 15.6.2.6
+! TEST-PASS: submodule_procedure
 ! GENERIC is allowed on an ordinary module procedure in a submodule, not
 ! only on a separate module procedure. The separate procedure here is run;
 ! plus1 is a sibling module procedure in the submodule (C1564, 3.143.4).
@@ -31,4 +32,5 @@ program submodule_procedure_p
   use submodule_procedure_m
   implicit none
   if (run() /= 5) error stop "integer"
+  print '(a)', 'TEST-PASS: submodule_procedure'
 end program

@@ -1,4 +1,5 @@
 ! TEST-RULE: R712 R713 R714 C719 C721 C722 C723 7.5.3.2 7.5.7.2 15.6.2.4
+! TEST-PASS: language_pdt_inheritance
 ! Inherited PDT parameters participate in a generic specifier. User-defined
 ! kind values zero and negative are legal because they are not used as
 ! intrinsic INTEGER(k) kinds. Calls with different runtime lengths share the
@@ -70,6 +71,7 @@ program language_pdt_inheritance_p
   call check(k, n, extra, r, total, 0, 3, 9, 0, 19)
   call inspect_child(zero_array, k, n, extra, r, total)
   call check(k, n, extra, r, total, 0, 2, 9, 1, 9)
+  print '(a)', 'TEST-PASS: language_pdt_inheritance'
 contains
   subroutine check(ak, an, ae, ar, av, ek, en, ee, er, ev)
     integer, intent(in) :: ak, an, ae, ar, av, ek, en, ee, er, ev

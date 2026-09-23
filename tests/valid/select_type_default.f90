@@ -1,4 +1,5 @@
 ! TEST-RULE: R705 R1155 R1157 11.1.11.2
+! TEST-PASS: select_type_default
 ! DECLARED TYPE DEFAULT, and a specific for which no guard matches
 ! (11.1.11). The real specific of unmarked contains no block; y stays 0.
 module select_type_default_m
@@ -34,4 +35,5 @@ program select_type_default_p
   if (code(.true.) /= -1) error stop "logical default"
   if (unmarked(3) /= 1) error stop "integer block"
   if (unmarked(3.0) /= 0) error stop "real has no block"
+  print '(a)', 'TEST-PASS: select_type_default'
 end program

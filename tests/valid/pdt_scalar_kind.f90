@@ -1,4 +1,5 @@
 ! TEST-RULE: R712 R713 R714 C719 C722 C723 15.6.2.4
+! TEST-PASS: pdt_scalar_kind
 ! A scalar kind parameter is a fixed value, not a factor. k2's four values
 ! produce four specifics, all with k1 = kind(0.0) (C723, 7.3.2.2).
 module pdt_scalar_kind_m
@@ -35,4 +36,5 @@ program pdt_scalar_kind_p
   if (any(abs(a2%value - 2.0) /= 0.0)) error stop "a2 value"
   if (any(abs(a4%value - 4.0) /= 0.0)) error stop "a4 value"
   if (any(abs(a8%value - 8.0) /= 0.0)) error stop "a8 value"
+  print '(a)', 'TEST-PASS: pdt_scalar_kind'
 end program

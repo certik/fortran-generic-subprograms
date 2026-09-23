@@ -1,4 +1,5 @@
 ! TEST-RULE: 8.5.3 8.5.8.4 C877 15.5.2.7 15.6.2.4
+! TEST-PASS: rank_allocatable_pointer
 ! Allocatable and pointer generic ranks retain every bound of their actual.
 module rank_alloc_ptr_m
   implicit none
@@ -187,4 +188,5 @@ program rank_alloc_ptr_p
       reshape([1, 2, 3, 4, 9, 10, 11, 12], [4, 2]))) then
     error stop "rank2 column isolation"
   end if
+  print '(a)', 'TEST-PASS: rank_allocatable_pointer'
 end program

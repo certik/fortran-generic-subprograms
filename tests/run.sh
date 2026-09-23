@@ -1,6 +1,7 @@
 #!/bin/sh
 # Familiar entry point:
 #   FC='ccache gfortran' FCFLAGS='-std=f2023 -O0' ./tests/run.sh
+#   CC='ccache cc' CFLAGS='-O0' ./tests/run.sh valid/mixed_case_directory
 #   ./tests/run.sh valid/factorial.f90
 # Metadata-only commands:
 #   ./tests/run.sh list --json

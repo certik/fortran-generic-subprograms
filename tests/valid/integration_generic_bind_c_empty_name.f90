@@ -1,5 +1,6 @@
 ! TEST-RULE: C1568 C1570 15.6.2.4 19.10.2
 ! TEST-DRAFT: generic-bind-c
+! TEST-PASS: integration_generic_bind_c_empty_name
 ! NAME="" gives every generated specific no binding label, so the scalar
 ! and rank-one specifics do not create duplicate external identifiers.
 module integration_generic_bind_c_empty_name_m
@@ -24,4 +25,5 @@ program integration_generic_bind_c_empty_name_p
   if (observed_rank /= 0) error stop "empty-name scalar specific"
   call observe_rank(vector)
   if (observed_rank /= 1) error stop "empty-name rank-one specific"
+  print '(a)', 'TEST-PASS: integration_generic_bind_c_empty_name'
 end program

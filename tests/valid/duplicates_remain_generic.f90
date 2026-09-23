@@ -1,5 +1,6 @@
 ! TEST-RULE: R705 R707 R708 R831 R832 7.3.2.2 8.5.17 11.1.10 11.1.11
 ! TEST-REQUIRES: int32
+! TEST-PASS: duplicates_remain_generic
 ! After duplicate removal a single combination is still generic, because
 ! genericity is syntactic (7.3.2.2 p3, 8.5.17 p2). SELECT GENERIC is therefore
 ! legal on TYPE(INTEGER, INTEGER), on a one-element kind array, and on RANK(2, 2).
@@ -51,4 +52,5 @@ program duplicates_remain_generic_p
   if (inc_one_kind(4_int32) /= 5_int32) error stop "one-element kind array"
   a = reshape([7, 8, 9, 10], [2, 2])
   if (first(a) /= 7) error stop "duplicate rank list"
+  print '(a)', 'TEST-PASS: duplicates_remain_generic'
 end program

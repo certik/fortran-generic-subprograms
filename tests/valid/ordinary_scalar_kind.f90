@@ -1,5 +1,6 @@
 ! TEST-RULE: R704 R708 C718 C801 C802 15.6.2.4
 ! TEST-REQUIRES: int32
+! TEST-PASS: ordinary_scalar_kind
 ! A scalar kind is an ordinary type, not a type-generic dummy.
 ! INTEGER(INT32) cannot use the generic parse because C718 requires a rank-one
 ! kind expression. CHARACTER(LEN=*) is deliberately used only where the
@@ -32,4 +33,5 @@ program ordinary_scalar_kind_p
   if (mix("abcd", 3_int32, 10) /= 17) error stop "integer"
   if (mix("ab", 1_int32, 0.5) /= 4) error stop "real"
   if (mix("", 0_int32, 1) /= 1) error stop "empty"
+  print '(a)', 'TEST-PASS: ordinary_scalar_kind'
 end program

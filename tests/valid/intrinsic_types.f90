@@ -1,4 +1,5 @@
 ! TEST-RULE: R705 R706 C716 11.1.11 15.6.2.4
+! TEST-PASS: intrinsic_types
 ! TYPE(INTEGER, REAL, COMPLEX). Unselected blocks are deleted: CONJG is only
 ! in the complex specific, so every retained block is valid for its specific.
 module intrinsic_types_m
@@ -39,4 +40,5 @@ program intrinsic_types_p
   if (classify(z) /= 3) error stop "classify complex"
   if (mag(3.0) /= 3.0) error stop "mag real"
   if (mag(z) /= abs(conjg(z))) error stop "mag complex"
+  print '(a)', 'TEST-PASS: intrinsic_types'
 end program

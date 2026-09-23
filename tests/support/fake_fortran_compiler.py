@@ -95,10 +95,18 @@ def compile_source(arguments: List[str]) -> int:
             "{}:4:3: Error: unsupported GENERIC syntax\n".format(source)
         )
         return 1
+    if (
+        "FGS-MAX-RANK-INVENTORY-V1" in text
+        and os.environ.get("FAKE_REJECT_MAX_RANK") == "1"
+    ):
+        sys.stderr.write(
+            "{}:3:3: Error: unsupported MAX_RANK intrinsic\n".format(source)
+        )
+        return 1
     if "COMPILE-SIGNAL" in values:
         os.kill(os.getpid(), int(values["COMPILE-SIGNAL"][-1]))
     status = int(values.get("COMPILE-EXIT", ["0"])[-1])
-    if status == 0:
+    if status == 0 and "NO-OBJECT" not in values:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(
             json.dumps({"source": str(source), "text": text}),
@@ -107,12 +115,47 @@ def compile_source(arguments: List[str]) -> int:
     return status
 
 
+def source_pass_markers(text: str) -> List[str]:
+    markers: List[str] = []
+    pattern = re.compile(r"['\"](TEST-PASS:\s*[^'\"]+)['\"]")
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if (
+            not stripped
+            or stripped.startswith("!")
+            or (line and line[0] in {"c", "C", "*"})
+        ):
+            continue
+        code = line.split("!", 1)[0]
+        markers.extend(match.group(1) for match in pattern.finditer(code))
+    return markers
+
+
+def image_directives(
+    values: Dict[str, List[str]], name: str
+) -> Dict[int, List[str]]:
+    result: Dict[int, List[str]] = {}
+    for value in values.get(name, []):
+        image_text, separator, payload = value.partition("|")
+        if not separator:
+            raise SystemExit("bad FAKE-{} directive".format(name))
+        result.setdefault(int(image_text), []).append(payload)
+    return result
+
+
 def executable_script(text: str) -> str:
     values = directives(text)
     outputs: List[str] = []
     status = int(values.get("RUN-EXIT", ["0"])[-1])
     run_signal = values.get("RUN-SIGNAL", [None])[-1]
     sleep_seconds = float(values.get("RUN-SLEEP", ["0"])[-1])
+    selected_calibration_image = None
+    image_outputs = image_directives(values, "RUN-OUTPUT-IMAGE")
+    image_status_values = image_directives(values, "RUN-EXIT-IMAGE")
+    image_statuses = {
+        image: int(status_values[-1])
+        for image, status_values in image_status_values.items()
+    }
 
     if "FGS-PROCESSOR-INVENTORY-V1" in text:
         outputs = [
@@ -135,20 +178,51 @@ def executable_script(text: str) -> str:
             "NAMED_REAL128 -1",
             "NAMED_ASCII 0",
             "NAMED_ISO_10646 -1",
+            "NAMED_SYSTEM_CHARACTER 1",
+            "NAMED_DEFAULT_CHARACTER 1",
             "COMPILER_VERSION fake compiler",
             "FGS-PROCESSOR-INVENTORY-END",
         ]
     elif "FGS-MAX-RANK-INVENTORY-V1" in text:
         max_rank = int(os.environ.get("FAKE_MAX_RANK", "15"))
+        max_rank_corank_1 = int(
+            os.environ.get(
+                "FAKE_MAX_RANK_CORANK_1",
+                str(max(14, max_rank - 1)),
+            )
+        )
         outputs = [
             "FGS-MAX-RANK-INVENTORY-V1",
             "MAX_RANK {}".format(max_rank),
-            "MAX_RANK_CORANK_1 {}".format(max(14, max_rank - 1)),
+            "MAX_RANK_CORANK_1 {}".format(max_rank_corank_1),
             "FGS-MAX-RANK-INVENTORY-END",
         ]
     elif "FGS-ERROR-STOP-CALIBRATION" in text:
-        outputs = ["FGS-ERROR-STOP-CALIBRATION"]
-        status = 23
+        outputs = []
+        selected_match = re.search(
+            r"fgs_stop_image\s*=\s*(\d+)",
+            text,
+            re.IGNORECASE,
+        )
+        if selected_match is None:
+            if os.environ.get("FAKE_CALIBRATION_NO_MARKER") != "1":
+                outputs.append("FGS-ERROR-STOP-CALIBRATION")
+            if os.environ.get("FAKE_CALIBRATION_UNEXPECTED_RETURN") == "1":
+                outputs.append("FGS-CALIBRATION-UNEXPECTED-RETURN")
+            status = int(os.environ.get("FAKE_CALIBRATION_STATUS", "23"))
+        else:
+            selected_calibration_image = int(selected_match.group(1))
+            status = int(
+                os.environ.get(
+                    "FAKE_CALIBRATION_STATUS_IMAGE_{}".format(
+                        selected_calibration_image
+                    ),
+                    os.environ.get(
+                        "FAKE_SELECTED_CALIBRATION_STATUS",
+                        os.environ.get("FAKE_CALIBRATION_STATUS", "23"),
+                    ),
+                )
+            )
     elif "FGS-AUTO-GENERIC-PREREQUISITE-PASS" in text:
         outputs = ["FGS-AUTO-GENERIC-PREREQUISITE-PASS"]
     elif "FGS-GENERATED-KINDS-PASS" in text:
@@ -162,7 +236,10 @@ def executable_script(text: str) -> str:
         if ranks is not None:
             outputs.append(ranks.group(0))
     else:
-        outputs = values.get("RUN-OUTPUT", [])
+        if "RUN-OUTPUT" in values:
+            outputs = values["RUN-OUTPUT"]
+        elif "SUPPRESS-PASS" not in values:
+            outputs = source_pass_markers(text)
     if os.environ.get("FAKE_STOP_STATUS_BY_LITERAL") == "1":
         literal_status = literal_stop_status(text)
         if literal_status:
@@ -175,15 +252,57 @@ import sys
 import time
 
 outputs = {outputs!r}
+image_outputs = {image_outputs!r}
+image_statuses = {image_statuses!r}
+selected_calibration_image = {selected_calibration_image!r}
+status = {status!r}
+this_image = int(os.environ.get("FAKE_THIS_IMAGE", "1"))
+if selected_calibration_image is not None:
+    if this_image == selected_calibration_image:
+        outputs = []
+        if os.environ.get("FAKE_CALIBRATION_NO_MARKER") != "1":
+            marker_count = (
+                2
+                if os.environ.get("FAKE_CALIBRATION_DUPLICATE_MARKER") == "1"
+                else 1
+            )
+            outputs.extend(
+                ["FGS-ERROR-STOP-CALIBRATION"] * marker_count
+            )
+        if os.environ.get("FAKE_CALIBRATION_UNEXPECTED_RETURN") == "1":
+            outputs.append("FGS-CALIBRATION-UNEXPECTED-RETURN")
+    else:
+        status = 0
+        outputs = []
+        sync_status = os.environ.get("FAKE_CALIBRATION_SYNC_STATUS")
+        if (
+            os.environ.get("FAKE_CALIBRATION_SYNC_RETURNS") == "1"
+            or sync_status in {{"0", "stopped", "failed"}}
+        ):
+            outputs.append("FGS-CALIBRATION-UNEXPECTED-RETURN")
+        elif sync_status is not None:
+            outputs.append(
+                "FGS-CALIBRATION-INCONCLUSIVE: "
+                "coarray-sync-status " + sync_status
+            )
+            status = int(
+                os.environ.get("FAKE_CALIBRATION_PROPAGATION_STATUS", "1")
+            )
+elif image_outputs or image_statuses:
+    outputs = image_outputs.get(this_image, [])
+    status = image_statuses.get(this_image, 0)
 for line in outputs:
     print(line, flush=True)
 time.sleep({sleep_seconds!r})
 run_signal = {run_signal!r}
 if run_signal is not None:
     os.kill(os.getpid(), int(run_signal))
-sys.exit({status!r})
+sys.exit(status)
 """.format(
         outputs=outputs,
+        image_outputs=image_outputs,
+        image_statuses=image_statuses,
+        selected_calibration_image=selected_calibration_image,
         sleep_seconds=sleep_seconds,
         run_signal=run_signal,
         status=status,

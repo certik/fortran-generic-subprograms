@@ -1,4 +1,5 @@
 ! TEST-RULE: 14.2.2 15.5.5.1 15.6.2.4
+! TEST-PASS: module_use
 ! A module generic is use-associated. The caller does not redeclare it.
 module module_use_m
   implicit none
@@ -19,4 +20,5 @@ program module_use_p
   implicit none
   if (twice(21) /= 42) error stop "integer"
   if (twice(1.25) /= 2.5) error stop "real"
+  print '(a)', 'TEST-PASS: module_use'
 end program

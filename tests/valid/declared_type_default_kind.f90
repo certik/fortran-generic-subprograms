@@ -1,5 +1,6 @@
 ! TEST-RULE: R708 R1157 8.7 11.1.11.2
 ! TEST-REQUIRES: int32 int64 real32 real64
+! TEST-PASS: declared_type_default_kind
 ! DECLARED TYPE IS (REAL) matches default real only, not every real kind.
 ! DECLARED TYPE IS (INTEGER) matches default integer only (11.1.11.2).
 module declared_type_default_kind_m
@@ -55,4 +56,5 @@ program declared_type_default_kind_p
   else
     if (int_code(1_int64) /= 2) error stop "int64 is not default integer"
   end if
+  print '(a)', 'TEST-PASS: declared_type_default_kind'
 end program

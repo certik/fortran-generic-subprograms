@@ -1,5 +1,6 @@
 ! TEST-RULE: R707 R708 C718 15.6.2.4
 ! TEST-REQUIRES: int32 int64
+! TEST-PASS: integer_kinds
 ! INTEGER(INTEGER_KINDS) and INTEGER(KIND=[INT32, INT64]) (7.3.2.2, C718).
 module integer_kinds_m
   use, intrinsic :: iso_fortran_env, only: integer_kinds, int32, int64
@@ -56,4 +57,5 @@ program integer_kinds_p
   call check(1)
   call check(1_int32)
   call check(1_int64)
+  print '(a)', 'TEST-PASS: integer_kinds'
 end program

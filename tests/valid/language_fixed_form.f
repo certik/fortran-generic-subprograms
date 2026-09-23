@@ -1,4 +1,5 @@
 C TEST-RULE: R705 R1155 R1157 6.3.3 15.6.2.4
+C TEST-PASS: language_fixed_form
 C Fixed form, a continuation line, and uppercase new keywords.
       MODULE LANGUAGE_FIXED_FORM_M
       IMPLICIT NONE
@@ -21,4 +22,5 @@ C Fixed form, a continuation line, and uppercase new keywords.
       IMPLICIT NONE
       IF (FIXED_CODE(3) .NE. 13) ERROR STOP 'FIXED INTEGER'
       IF (FIXED_CODE(4.0) .NE. 24) ERROR STOP 'FIXED REAL'
+      PRINT '(A)', 'TEST-PASS: language_fixed_form'
       END PROGRAM

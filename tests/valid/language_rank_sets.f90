@@ -1,4 +1,5 @@
 ! TEST-RULE: R831 R832 R833 C875 C876 C877 R1152 8.5.17 11.1.10
+! TEST-PASS: language_rank_sets
 ! Distinct rank lists, ranges, mixed scalar/range lists, overlapping ranges,
 ! duplicate collapse, constant-expression bounds, and an empty descending
 ! range embedded in a nonempty list.
@@ -95,4 +96,5 @@ program language_rank_sets_p
   if (ordinary_named_rank(4.0, r1) /= 7) error stop "named ordinary rank real"
   if (rank(implied) /= 1 .or. lbound(implied, 1) /= 1) error stop "implied rank"
   if (any(implied /= [2, 3, 5])) error stop "implied shape value"
+  print '(a)', 'TEST-PASS: language_rank_sets'
 end program

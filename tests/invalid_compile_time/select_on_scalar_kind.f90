@@ -1,9 +1,10 @@
-! TEST-RULE: C1159 C723
+! TEST-RULE: C718 C1159
 ! TEST-DIAGNOSTIC-CLASS: required
 ! TEST-ERROR: C1159|not.*type-generic|selector.*type-generic dummy
 ! TEST-ERROR-PHASE: compile
 ! Invalid: C1159. INTEGER(KIND(0)) is an ordinary scalar kind selector, not a
-! generic-intrinsic-type-spec. The dummy is not type-generic.
+! generic-intrinsic-type-spec, because C718 requires a rank-one kind array.
+! The dummy is not type-generic.
 module select_on_scalar_kind_m
   implicit none
 contains

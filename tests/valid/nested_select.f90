@@ -1,4 +1,5 @@
 ! TEST-RULE: R1150 R1155 11.1.10 11.1.11 15.6.2.4
+! TEST-PASS: nested_select
 ! A dummy that is both type-generic and rank-generic: 2 types x 3 ranks.
 ! The original sequential checks are retained, followed by genuine nesting in
 ! both orders and nesting whose selectors are independent dummies.
@@ -127,4 +128,5 @@ program nested_select_p
   if (independent(1.0, 2) /= 102) error stop "independent real scalar"
   if (independent(1, selector) /= 201) error stop "independent integer rank1"
   if (independent(1.0, selector) /= 202) error stop "independent real rank1"
+  print '(a)', 'TEST-PASS: nested_select'
 end program

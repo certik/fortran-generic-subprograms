@@ -1,5 +1,6 @@
 ! TEST-RULE: C1566 C1568 C1570 15.6.2.4 19.10.2
 ! TEST-DRAFT: generic-bind-c
+! TEST-PASS: integration_generic_bind_c_internal
 ! An internal BIND(C) procedure without NAME= has no binding label.
 program integration_generic_bind_c_internal_p
   implicit none
@@ -11,6 +12,7 @@ program integration_generic_bind_c_internal_p
   if (observed_rank /= 0) error stop "internal scalar specific"
   call observe_internal(vector)
   if (observed_rank /= 1) error stop "internal rank-one specific"
+  print '(a)', 'TEST-PASS: integration_generic_bind_c_internal'
 contains
   generic subroutine observe_internal(x) bind(c)
     type(*), rank(0:1), intent(in) :: x

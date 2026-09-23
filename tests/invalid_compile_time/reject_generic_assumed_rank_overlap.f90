@@ -1,23 +1,24 @@
-! TEST-RULE: C1517
+! TEST-RULE: C1517 15.4.3.4.5 15.6.2.4
 ! TEST-DIAGNOSTIC-CLASS: required
 ! TEST-ERROR: C1517|not distinguishable|assumed-rank.*not distinguish|ambiguous.*generic
 ! TEST-ERROR-PHASE: compile
+! Two same-name generic subprograms extend one generic name (15.6.2.4 NOTE 4).
+! The first generates assumed-rank INTEGER and REAL specifics; the second
+! generates rank-one INTEGER and LOGICAL specifics. Each family is valid
+! alone. Assumed rank is TKR compatible with every rank (15.4.3.4.5 p2), so
+! only the generated INTEGER(..) and INTEGER rank-one pair violates C1517.
 module reject_generic_assumed_rank_overlap_m
   implicit none
-  ! TEST-ERROR-HERE
-  interface consume
-    module procedure consume_scalar
-    ! TEST-ERROR-HERE
-    module procedure consume_any_rank
-  end interface
 contains
   ! TEST-ERROR-HERE
-  subroutine consume_scalar(x)
-    integer, intent(in) :: x
+  generic subroutine consume(x)
+    ! TEST-ERROR-HERE
+    type(integer, real), intent(in) :: x(..)
   end subroutine
 
   ! TEST-ERROR-HERE
-  subroutine consume_any_rank(x)
-    integer, intent(in) :: x(..)
+  generic subroutine consume(x)
+    ! TEST-ERROR-HERE
+    type(integer, logical), intent(in), rank(1) :: x
   end subroutine
 end module

@@ -1,4 +1,5 @@
 ! TEST-RULE: R707 R708 C718 15.6.2.4
+! TEST-PASS: logical_kinds
 ! LOGICAL(LOGICAL_KINDS): one specific per logical kind (7.3.2.2).
 module logical_kinds_m
   use, intrinsic :: iso_fortran_env, only: logical_kinds
@@ -32,4 +33,5 @@ program logical_kinds_p
   call check(.true.)
   call check(.false.)
   call check(v)
+  print '(a)', 'TEST-PASS: logical_kinds'
 end program

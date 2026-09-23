@@ -24,6 +24,7 @@ from processor_cases import (
     MAX_RANK_INVENTORY_SOURCE,
     ProcessorInventory,
     error_stop_calibration_source,
+    generated_kind_details,
     generate_kind_runtime_source,
     generate_rank_runtime_source,
     generation_manifest,
@@ -33,6 +34,7 @@ from processor_cases import (
 
 
 SOURCE_SUFFIXES = {".f", ".f90", ".f95", ".f03", ".f08", ".f18"}
+C_SOURCE_SUFFIXES = {".c"}
 KNOWN_DRAFTS = {
     "generic-interface-declarations",
     "assumed-length-guards",
@@ -41,6 +43,7 @@ KNOWN_DRAFTS = {
     "empty-expansion",
     "generic-bind-c",
     "extended-rank-limit",
+    "literal-rank-limit",
     "mixed-length-dedup",
     "template-integration",
 }
@@ -50,7 +53,13 @@ MUTUALLY_EXCLUSIVE_DRAFTS = {
             "character-generic-parse",
             "character-ordinary-parse",
         }
-    )
+    ),
+    frozenset(
+        {
+            "extended-rank-limit",
+            "literal-rank-limit",
+        }
+    ),
 }
 NAMED_CAPABILITIES = {
     "int8",
@@ -63,6 +72,8 @@ NAMED_CAPABILITIES = {
     "real128",
     "ascii",
     "iso_10646",
+    "system_character",
+    "default_character",
 }
 COUNT_CAPABILITIES = {
     "integer_kinds",
@@ -105,6 +116,8 @@ MISSING_MAIN_RE = re.compile(
     r"entry point.*(?:_?main|winmain)|LNK1561)",
     re.IGNORECASE,
 )
+CALIBRATION_INCONCLUSIVE_PREFIX = "FGS-CALIBRATION-INCONCLUSIVE:"
+RUNTIME_INCONCLUSIVE_PREFIX = "TEST-INCONCLUSIVE:"
 
 
 @dataclass
@@ -176,9 +189,12 @@ class Metadata:
     error_phase_explicit: bool = False
     error_markers: List[Marker] = field(default_factory=list)
     stop_id: Optional[str] = None
+    pass_id: Optional[str] = None
     error_stop_spec: Optional[ErrorStopSpec] = None
     error_stop_error: Optional[str] = None
     images: int = 1
+    stop_image: Optional[int] = None
+    stop_image_explicit: bool = False
     parse_errors: List[str] = field(default_factory=list)
 
     def to_dict(self, tests_root: Path) -> Dict[str, Any]:
@@ -194,6 +210,7 @@ class Metadata:
                 marker.to_dict(tests_root) for marker in self.error_markers
             ],
             "stop_id": self.stop_id,
+            "pass_id": self.pass_id,
             "error_stop_spec": (
                 None
                 if self.error_stop_spec is None
@@ -201,6 +218,8 @@ class Metadata:
             ),
             "error_stop_error": self.error_stop_error,
             "images": self.images,
+            "stop_image": self.stop_image,
+            "stop_image_explicit": self.stop_image_explicit,
         }
 
 
@@ -213,8 +232,26 @@ class Case:
     metadata: Metadata
     in_draft_tree: bool
 
+    @property
+    def fortran_sources(self) -> List[Path]:
+        return [
+            source
+            for source in self.sources
+            if source.suffix.lower() in SOURCE_SUFFIXES
+        ]
+
+    @property
+    def c_sources(self) -> List[Path]:
+        return [
+            source
+            for source in self.sources
+            if source.suffix.lower() in C_SOURCE_SUFFIXES
+        ]
+
     def has_program(self) -> bool:
-        return any(source_has_program(source) for source in self.sources)
+        return any(
+            source_has_program(source) for source in self.fortran_sources
+        )
 
     def to_dict(self, tests_root: Path) -> Dict[str, Any]:
         return {
@@ -223,6 +260,14 @@ class Case:
             "path": relative_display(self.path, tests_root),
             "sources": [
                 relative_display(source, tests_root) for source in self.sources
+            ],
+            "fortran_sources": [
+                relative_display(source, tests_root)
+                for source in self.fortran_sources
+            ],
+            "c_sources": [
+                relative_display(source, tests_root)
+                for source in self.c_sources
             ],
             "in_draft_tree": self.in_draft_tree,
             "has_program": self.has_program(),
@@ -399,6 +444,14 @@ def is_source(path: Path) -> bool:
     return path.is_file() and path.suffix.lower() in SOURCE_SUFFIXES
 
 
+def is_c_source(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() in C_SOURCE_SUFFIXES
+
+
+def is_case_source(path: Path) -> bool:
+    return is_source(path) or is_c_source(path)
+
+
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
@@ -512,6 +565,8 @@ def parse_metadata(sources: Sequence[Path]) -> Metadata:
                 "DIAGNOSTIC-CLASS",
                 "ERROR-PHASE",
                 "STOP",
+                "STOP-IMAGE",
+                "PASS",
                 "IMAGES",
             }:
                 previous = scalar_values.get(key)
@@ -543,11 +598,21 @@ def parse_metadata(sources: Sequence[Path]) -> Metadata:
             metadata.error_stop_spec,
             metadata.error_stop_error,
         ) = find_error_stop_spec(sources, metadata.stop_id)
+    if "PASS" in scalar_values:
+        metadata.pass_id = scalar_values["PASS"]
     if "IMAGES" in scalar_values:
         try:
             metadata.images = int(scalar_values["IMAGES"], 10)
         except ValueError:
             metadata.parse_errors.append("TEST-IMAGES must be an integer")
+    if "STOP-IMAGE" in scalar_values:
+        metadata.stop_image_explicit = True
+        try:
+            metadata.stop_image = int(scalar_values["STOP-IMAGE"], 10)
+        except ValueError:
+            metadata.parse_errors.append(
+                "TEST-STOP-IMAGE must be an integer"
+            )
     return metadata
 
 
@@ -829,12 +894,153 @@ def find_error_stop_spec(
 def source_code_contains(
     sources: Sequence[Path], text: str
 ) -> bool:
+    return source_code_occurrences(sources, text) > 0
+
+
+def source_code_occurrences(
+    sources: Sequence[Path], text: str
+) -> int:
+    occurrences = 0
     for source in sources:
+        if source.suffix.lower() not in SOURCE_SUFFIXES:
+            continue
         fixed_form = source.suffix.lower() == ".f"
         for line in read_text(source).splitlines():
-            if not is_comment_or_blank(line, fixed_form) and text in line:
-                return True
-    return False
+            if is_comment_or_blank(line, fixed_form):
+                continue
+            occurrences += strip_fortran_comment(line).count(text)
+    return occurrences
+
+
+def source_program_output_occurrences(
+    sources: Sequence[Path],
+    text: str,
+    literal_prefix: bool = False,
+) -> int:
+    literal = re.compile(
+        r"(['\"])"
+        + re.escape(text)
+        + (r"[^'\"]*\1" if literal_prefix else r"\1")
+    )
+    output_statement = re.compile(
+        r"^[ \t]*(?:\d+[ \t]+)?(?:print\b|write[ \t]*\()",
+        re.IGNORECASE,
+    )
+    program_statement = re.compile(
+        r"^[ \t]*(?:\d+[ \t]+)?program(?:[ \t]+[a-z_]\w*|[ \t]*$)",
+        re.IGNORECASE,
+    )
+    end_program_statement = re.compile(
+        r"^[ \t]*(?:\d+[ \t]+)?end[ \t]+program"
+        r"(?:[ \t]+[a-z_]\w*)?[ \t]*$",
+        re.IGNORECASE,
+    )
+    bare_end_statement = re.compile(
+        r"^[ \t]*(?:\d+[ \t]+)?end[ \t]*$",
+        re.IGNORECASE,
+    )
+    contains_statement = re.compile(
+        r"^[ \t]*(?:\d+[ \t]+)?contains[ \t]*$",
+        re.IGNORECASE,
+    )
+    nested_starts = (
+        (
+            "template",
+            re.compile(
+                r"^[ \t]*(?:\d+[ \t]+)?template[ \t]+[a-z_]\w*",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "requirement",
+            re.compile(
+                r"^[ \t]*(?:\d+[ \t]+)?requirement[ \t]+[a-z_]\w*",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "interface",
+            re.compile(
+                r"^[ \t]*(?:\d+[ \t]+)?"
+                r"(?:abstract[ \t]+)?interface(?:\b|[ \t])",
+                re.IGNORECASE,
+            ),
+        ),
+        (
+            "type",
+            re.compile(
+                r"^[ \t]*(?:\d+[ \t]+)?type"
+                r"(?:[ \t]*,|[ \t]*::|"
+                r"[ \t]+(?!is\b)[a-z_]\w*)",
+                re.IGNORECASE,
+            ),
+        ),
+    )
+    nested_ends = {
+        scope: re.compile(
+            r"^[ \t]*(?:\d+[ \t]+)?end[ \t]+{}"
+            r"(?:[ \t]+[a-z_]\w*)?[ \t]*$".format(scope),
+            re.IGNORECASE,
+        )
+        for scope in ("template", "requirement", "interface", "type")
+    }
+    occurrences = 0
+    for source in sources:
+        if source.suffix.lower() not in SOURCE_SUFFIXES:
+            continue
+        lines = read_text(source).splitlines()
+        fixed_form = source.suffix.lower() == ".f"
+        in_program = False
+        main_contains = False
+        nested_scopes: List[str] = []
+        index = 0
+        while index < len(lines):
+            if is_comment_or_blank(lines[index], fixed_form):
+                index += 1
+                continue
+            statement, end = logical_statement(lines, index, fixed_form)
+            if program_statement.match(statement):
+                in_program = True
+                main_contains = False
+                nested_scopes = []
+            elif in_program:
+                if end_program_statement.match(statement):
+                    in_program = False
+                    main_contains = False
+                    nested_scopes = []
+                elif (
+                    nested_scopes
+                    and nested_ends[nested_scopes[-1]].match(statement)
+                ):
+                    nested_scopes.pop()
+                else:
+                    started_scope = next(
+                        (
+                            scope
+                            for scope, pattern in nested_starts
+                            if pattern.match(statement)
+                        ),
+                        None,
+                    )
+                    if started_scope is not None:
+                        nested_scopes.append(started_scope)
+                    elif contains_statement.match(statement):
+                        if not nested_scopes:
+                            main_contains = True
+                    elif (
+                        bare_end_statement.match(statement)
+                        and not nested_scopes
+                    ):
+                        in_program = False
+                        main_contains = False
+                    elif (
+                        not main_contains
+                        and not nested_scopes
+                        and output_statement.match(statement)
+                    ):
+                        occurrences += len(literal.findall(statement))
+            index = end + 1
+    return occurrences
 
 
 def category_roots(tests_root: Path) -> List[Tuple[Path, str, bool]]:
@@ -881,11 +1087,14 @@ def discover_cases(tests_root: Path) -> List[Case]:
                     (
                         item.resolve()
                         for item in entry.iterdir()
-                        if is_source(item)
+                        if is_case_source(item)
                     ),
                     key=lambda item: item.name,
                 )
-                if not sources:
+                if not any(
+                    source.suffix.lower() in SOURCE_SUFFIXES
+                    for source in sources
+                ):
                     continue
                 case_path = entry.resolve()
             else:
@@ -897,7 +1106,13 @@ def discover_cases(tests_root: Path) -> List[Case]:
                     category=category,
                     path=case_path,
                     sources=sources,
-                    metadata=parse_metadata(sources),
+                    metadata=parse_metadata(
+                        [
+                            source
+                            for source in sources
+                            if source.suffix.lower() in SOURCE_SUFFIXES
+                        ]
+                    ),
                     in_draft_tree=in_draft_tree,
                 )
             )
@@ -993,15 +1208,17 @@ def validate_case(case: Case) -> List[ValidationIssue]:
     for parse_error in case.metadata.parse_errors:
         error("metadata-parse", parse_error)
     if not case.sources:
-        error("no-sources", "case has no .f or .f90 sources")
+        error("no-sources", "case has no Fortran or C sources")
     for source in case.sources:
         if not source.is_file():
             error("missing-source", "source does not exist: {}".format(source))
-        elif source.suffix.lower() not in SOURCE_SUFFIXES:
+        elif source.suffix.lower() not in SOURCE_SUFFIXES | C_SOURCE_SUFFIXES:
             error(
                 "unsupported-source",
-                "unsupported Fortran source suffix: {}".format(source),
+                "unsupported source suffix: {}".format(source),
             )
+    if not case.fortran_sources:
+        error("no-fortran-source", "case has no Fortran source")
     if not case.metadata.rules:
         error("missing-rule", "TEST-RULE metadata is required")
     for requirement in case.metadata.requires:
@@ -1028,6 +1245,11 @@ def validate_case(case: Case) -> List[ValidationIssue]:
         )
     if case.metadata.images < 1:
         error("invalid-images", "TEST-IMAGES must be at least one")
+    if case.metadata.stop_image_explicit and case.category != "invalid_runtime":
+        error(
+            "unexpected-stop-image",
+            "TEST-STOP-IMAGE is only valid for runtime-negative tests",
+        )
 
     if case.category == "invalid_compile_time":
         if case.metadata.diagnostic_class not in {"required", "enhanced"}:
@@ -1099,7 +1321,68 @@ def validate_case(case: Case) -> List[ValidationIssue]:
             "{} case has no PROGRAM unit to link and run".format(case.category),
         )
 
+    if case.category == "valid":
+        pass_id = case.metadata.pass_id
+        if not pass_id:
+            error(
+                "missing-pass-id",
+                "runtime-positive tests require TEST-PASS: <id>",
+            )
+        elif re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]*", pass_id) is None:
+            error(
+                "invalid-pass-id",
+                "TEST-PASS id must be a single auditable marker token",
+            )
+        else:
+            pass_line = "TEST-PASS: {}".format(pass_id)
+            occurrences = source_program_output_occurrences(
+                case.fortran_sources, pass_line
+            )
+            if occurrences == 0:
+                error(
+                    "missing-pass-source-marker",
+                    "main PROGRAM source does not directly output {!r}".format(
+                        pass_line
+                    ),
+                )
+            elif occurrences != 1:
+                error(
+                    "duplicate-pass-source-marker",
+                    "source contains {} executable occurrences of {!r}; "
+                    "exactly one output site is required".format(
+                        occurrences, pass_line
+                    ),
+                )
+    elif case.metadata.pass_id is not None:
+        error(
+            "unexpected-pass-id",
+            "TEST-PASS metadata is only valid for runtime-positive tests",
+        )
+
     if case.category == "invalid_runtime":
+        if case.metadata.stop_image is not None:
+            stop_image_valid = (
+                1 <= case.metadata.stop_image <= case.metadata.images
+            )
+            if not stop_image_valid:
+                error(
+                    "invalid-stop-image",
+                    "TEST-STOP-IMAGE={} is outside TEST-IMAGES=1:{}".format(
+                        case.metadata.stop_image,
+                        case.metadata.images,
+                    ),
+                )
+            elif source_program_output_occurrences(
+                case.fortran_sources,
+                RUNTIME_INCONCLUSIVE_PREFIX,
+                literal_prefix=True,
+            ) == 0:
+                error(
+                    "missing-inconclusive-source-marker",
+                    "TEST-STOP-IMAGE runtime source must directly output "
+                    "a TEST-INCONCLUSIVE: line for indeterminate "
+                    "synchronization status",
+                )
         stop_id = case.metadata.stop_id
         if not stop_id:
             error("missing-stop-id", "runtime negative requires TEST-STOP")
@@ -1170,9 +1453,14 @@ def generated_catalog() -> List[Dict[str, Any]]:
                 "complex-for-each-real-kind",
                 "logical",
                 "character",
-                "result-kind-and-value",
+                "signed-boundary-and-precision-sensitive-values",
+                "both-logical-values",
+                "nonzero-character-ordinal-values-for-system-ascii-iso10646",
+                "opaque-character-kind-zero-ordinal-fallback",
+                "result-kind-length-and-value",
                 "save-state-by-kind-type-and-rank",
-                "joint-type-kind-rank-save-state",
+                "joint-type-kind-rank-save-state-through-rank-two",
+                "joint-rank-two-payload-copy",
             ],
             "counts": "processor-dependent; emitted in run/generate JSON",
         },
@@ -1181,9 +1469,25 @@ def generated_catalog() -> List[Dict[str, Any]]:
             "enabled_by_default": True,
             "inventory_dimensions": ["MAX_RANK", "MAX_RANK(1)"],
             "portable_default_bound": 15,
-            "extended_profile": "extended-rank-limit",
-            "runtime_coverage": "every rank from zero through selected bound",
+            "runtime_coverage": (
+                "every rank zero through 15, independently gating, with "
+                "exact shape/payload oracles, active outermost axes, and "
+                "contiguous plus dimension-1 stride-2 actuals"
+            ),
             "counts": "processor-dependent; emitted in run/generate JSON",
+        },
+        {
+            "id": "@generated/processor-rank-extended",
+            "enabled_by_default": False,
+            "selected_by_draft": "extended-rank-limit",
+            "gating_with": "--gate-drafts",
+            "requires": "MAX_RANK > 15",
+            "portable_case_remains_independently_gating": True,
+            "runtime_coverage": (
+                "ranks zero through processor MAX_RANK; duplicates portable "
+                "ranks and uses the same explicitly reported layouts"
+            ),
+            "unavailable_policy": "explicit skip",
         },
     ]
 
@@ -1509,6 +1813,8 @@ class CompilerDriver:
         self,
         fc: str,
         fcflags: str,
+        cc: str,
+        cflags: str,
         launcher: Optional[str],
         invocation_cwd: Path,
         compile_timeout: float,
@@ -1521,6 +1827,11 @@ class CompilerDriver:
         except ValueError as exc:
             raise ValueError("invalid FCFLAGS quoting: {}".format(exc))
         self.flags = normalize_relative_flag_paths(split_flags, invocation_cwd)
+        self.c_command_text = cc
+        self.c_flags_text = cflags
+        self.c_command: Optional[List[str]] = None
+        self.c_flags: Optional[List[str]] = None
+        self.c_configuration_error: Optional[str] = None
         if compile_timeout <= 0 or run_timeout <= 0:
             raise ValueError("compile and runtime timeouts must be positive")
         self.compile_timeout = compile_timeout
@@ -1560,12 +1871,53 @@ class CompilerDriver:
     def display(self) -> str:
         return shlex.join(self.command + self.flags)
 
+    @property
+    def c_display(self) -> str:
+        pieces = [self.c_command_text]
+        if self.c_flags_text:
+            pieces.append(self.c_flags_text)
+        return " ".join(pieces)
+
+    def configure_c(self) -> Tuple[List[str], List[str]]:
+        if self.c_configuration_error is not None:
+            raise ValueError(self.c_configuration_error)
+        if self.c_command is not None and self.c_flags is not None:
+            return self.c_command, self.c_flags
+        try:
+            command = parse_command_words(
+                self.c_command_text, "CC", self.invocation_cwd
+            )
+            try:
+                split_flags = shlex.split(self.c_flags_text)
+            except ValueError as exc:
+                raise ValueError("invalid CFLAGS quoting: {}".format(exc))
+            flags = normalize_relative_flag_paths(
+                split_flags, self.invocation_cwd
+            )
+        except ValueError as exc:
+            self.c_configuration_error = str(exc)
+            raise
+        self.c_command = command
+        self.c_flags = flags
+        return command, flags
+
     def compile(self, source: Path, obj: Path, cwd: Path) -> ProcessResult:
-        command = (
-            self.command
-            + self.flags
-            + ["-c", str(source), "-o", str(obj)]
-        )
+        if source.suffix.lower() in C_SOURCE_SUFFIXES:
+            try:
+                compiler, flags = self.configure_c()
+            except ValueError as exc:
+                return ProcessResult(
+                    command=[self.c_command_text],
+                    cwd=str(cwd),
+                    returncode=None,
+                    stdout="",
+                    stderr="",
+                    duration_seconds=0.0,
+                    spawn_error="C compiler unavailable: {}".format(exc),
+                )
+        else:
+            compiler, flags = self.command, self.flags
+        command = compiler + flags + ["-c", str(source), "-o", str(obj)]
         return run_process(command, cwd, self.compile_timeout)
 
     def link(
@@ -2043,6 +2395,8 @@ class SuiteRunner:
         self.driver = CompilerDriver(
             fc=args.fc,
             fcflags=args.fcflags,
+            cc=args.cc,
+            cflags=args.cflags,
             launcher=args.launcher,
             invocation_cwd=invocation_cwd,
             compile_timeout=args.compile_timeout,
@@ -2062,12 +2416,15 @@ class SuiteRunner:
         self.inventory_processes: List[ProcessResult] = []
         self.prerequisite_result: Optional[TestResult] = None
         self.calibrations: Dict[
-            Tuple[int, str],
+            Tuple[int, Optional[int], str],
             Tuple[Optional[ProcessResult], Optional[str]],
         ] = {}
 
     def compile_sources(
-        self, sources: Sequence[Path], work_dir: Path
+        self,
+        sources: Sequence[Path],
+        work_dir: Path,
+        allow_missing_artifacts: bool = False,
     ) -> Tuple[List[Path], List[ProcessResult], Optional[str]]:
         objects: List[Path] = []
         processes: List[ProcessResult] = []
@@ -2080,11 +2437,26 @@ class SuiteRunner:
                 return objects, processes, infrastructure
             if result.returncode != 0:
                 return objects, processes, None
+            objects.append(obj)
+            produced = artifact_error(obj)
+            if produced is not None and not allow_missing_artifacts:
+                return objects, processes, produced
+        return objects, processes, None
+
+    @staticmethod
+    def compiled_artifact_error(
+        objects: Sequence[Path], expected_count: int
+    ) -> Optional[str]:
+        if len(objects) != expected_count:
+            return (
+                "compilation did not reach every source: expected {} objects, "
+                "recorded {}".format(expected_count, len(objects))
+            )
+        for obj in objects:
             produced = artifact_error(obj)
             if produced is not None:
-                return objects, processes, produced
-            objects.append(obj)
-        return objects, processes, None
+                return produced
+        return None
 
     def link_objects(
         self, objects: Sequence[Path], work_dir: Path
@@ -2307,33 +2679,63 @@ class SuiteRunner:
         return self.prerequisite_result
 
     def calibration(
-        self, images: int, stop_spec: ErrorStopSpec
+        self,
+        images: int,
+        stop_spec: ErrorStopSpec,
+        stop_image: Optional[int],
     ) -> Tuple[Optional[ProcessResult], Optional[str], Dict[str, Any]]:
-        cache_key = (images, stop_spec.cache_key)
+        cache_key = (images, stop_image, stop_spec.cache_key)
+        scope = "all-images" if stop_image is None else "selected-image"
         if cache_key in self.calibrations:
             result, error = self.calibrations[cache_key]
+            inconclusive_lines = (
+                []
+                if result is None
+                else [
+                    line
+                    for line in runtime_lines(result)
+                    if line.startswith(CALIBRATION_INCONCLUSIVE_PREFIX)
+                ]
+            )
             return (
                 result,
                 error,
                 {
                     "cached": True,
+                    "images": images,
+                    "scope": scope,
+                    "stop_image": stop_image,
+                    "inconclusive_lines": inconclusive_lines,
+                    "evidence_class": (
+                        "inconclusive"
+                        if inconclusive_lines
+                        else "termination"
+                    ),
                     "stop_spec": stop_spec.to_dict(self.tests_root),
                 },
             )
         work_dir = self.work.case_dir(
-            "error-stop-calibration-{}".format(images)
+            "error-stop-calibration-{}-{}".format(
+                images,
+                "all" if stop_image is None else stop_image,
+            )
         )
         source = work_dir / "error_stop_calibration.f90"
         source.write_text(
             error_stop_calibration_source(
                 stop_spec.stop_clause,
                 stop_spec.flush_before_stop,
+                stop_image,
             ),
             encoding="utf-8",
         )
         objects, compile_results, error = self.compile_sources([source], work_dir)
         details: Dict[str, Any] = {
+            "cached": False,
             "compile": process_details(compile_results),
+            "images": images,
+            "scope": scope,
+            "stop_image": stop_image,
             "stop_spec": stop_spec.to_dict(self.tests_root),
         }
         if error is not None:
@@ -2355,18 +2757,43 @@ class SuiteRunner:
         run_result = self.driver.execute(executable, images, work_dir)
         details["run"] = run_result.to_dict()
         lines = runtime_lines(run_result)
+        marker_count = lines.count("FGS-ERROR-STOP-CALIBRATION")
+        inconclusive_lines = [
+            line
+            for line in lines
+            if line.startswith(CALIBRATION_INCONCLUSIVE_PREFIX)
+        ]
+        details["reachability_marker_count"] = marker_count
+        details["inconclusive_lines"] = inconclusive_lines
+        details["evidence_class"] = (
+            "inconclusive" if inconclusive_lines else "termination"
+        )
         if run_result.spawn_error is not None:
             error = "ERROR STOP calibration could not start: {}".format(
                 run_result.spawn_error
             )
+        elif inconclusive_lines:
+            error = (
+                "ERROR STOP calibration reported inconclusive "
+                "synchronization evidence: {}".format(
+                    "; ".join(inconclusive_lines)
+                )
+            )
         elif run_result.timed_out:
             error = "ERROR STOP calibration timed out"
-        elif run_result.returncode in {None, 0, 126, 127}:
+        elif run_result.returncode is None:
             error = "ERROR STOP calibration had invalid outcome {}".format(
                 run_result.outcome()
             )
-        elif "FGS-ERROR-STOP-CALIBRATION" not in lines:
+        elif marker_count == 0:
             error = "ERROR STOP calibration did not print its reachability marker"
+        elif stop_image is not None and marker_count != 1:
+            error = (
+                "selected-image ERROR STOP calibration printed its "
+                "reachability marker {} times; expected exactly one".format(
+                    marker_count
+                )
+            )
         elif "FGS-CALIBRATION-UNEXPECTED-RETURN" in lines:
             error = "ERROR STOP calibration returned unexpectedly"
         else:
@@ -2455,19 +2882,6 @@ class SuiteRunner:
                 False,
                 details,
             )
-        if run_result.returncode in {126, 127}:
-            return TestResult(
-                case.case_id,
-                case.category,
-                "error",
-                "runtime-infrastructure",
-                "valid test returned infrastructure status {}".format(
-                    run_result.returncode
-                ),
-                gating,
-                True,
-                details,
-            )
         if run_result.returncode != 0:
             reason = (
                 "runtime-signal"
@@ -2485,12 +2899,68 @@ class SuiteRunner:
                 True,
                 details,
             )
+        pass_id = case.metadata.pass_id or ""
+        expected_marker = "TEST-PASS: {}".format(pass_id)
+        pass_lines = [
+            line
+            for line in runtime_lines(run_result)
+            if line.startswith("TEST-PASS:")
+        ]
+        matching_count = pass_lines.count(expected_marker)
+        unexpected_markers = [
+            line for line in pass_lines if line != expected_marker
+        ]
+        details["completion_protocol"] = {
+            "marker": expected_marker,
+            "expected_count": case.metadata.images,
+            "actual_count": matching_count,
+            "unexpected_markers": unexpected_markers,
+        }
+        if unexpected_markers:
+            return TestResult(
+                case.case_id,
+                case.category,
+                "fail",
+                "unexpected-completion-marker",
+                "runtime output contained unexpected TEST-PASS marker lines",
+                gating,
+                True,
+                details,
+            )
+        if matching_count == 0:
+            return TestResult(
+                case.case_id,
+                case.category,
+                "fail",
+                "missing-completion-marker",
+                "runtime output did not contain exact line {!r}".format(
+                    expected_marker
+                ),
+                gating,
+                True,
+                details,
+            )
+        if matching_count != case.metadata.images:
+            return TestResult(
+                case.case_id,
+                case.category,
+                "fail",
+                "completion-marker-count",
+                "runtime printed {!r} {} times; expected {}".format(
+                    expected_marker,
+                    matching_count,
+                    case.metadata.images,
+                ),
+                gating,
+                True,
+                details,
+            )
         return TestResult(
             case.case_id,
             case.category,
             "pass",
             "valid-runtime-pass",
-            "compiled, linked, and returned status zero",
+            "compiled, linked, returned status zero, and completed all images",
             gating,
             True,
             details,
@@ -2565,15 +3035,24 @@ class SuiteRunner:
                 details,
             )
         calibration, calibration_error, calibration_details = self.calibration(
-            case.metadata.images, stop_spec
+            case.metadata.images,
+            stop_spec,
+            case.metadata.stop_image,
         )
         details["calibration"] = calibration_details
         if calibration_error is not None or calibration is None:
+            calibration_inconclusive = bool(
+                calibration_details.get("inconclusive_lines")
+            )
             return TestResult(
                 case.case_id,
                 case.category,
                 "error",
-                "error-stop-calibration-failure",
+                (
+                    "calibration-inconclusive"
+                    if calibration_inconclusive
+                    else "error-stop-calibration-failure"
+                ),
                 calibration_error or "ERROR STOP calibration is unavailable",
                 gating,
                 False,
@@ -2583,38 +3062,69 @@ class SuiteRunner:
             executable, case.metadata.images, work_dir
         )
         details["runtime"] = run_result.to_dict()
-        if run_result.spawn_error is not None or run_result.timed_out:
+        if run_result.spawn_error is not None:
             return TestResult(
                 case.case_id,
                 case.category,
                 "error",
                 "runtime-infrastructure",
-                (
-                    run_result.spawn_error
-                    or "runtime-negative test exceeded the timeout"
-                ),
+                run_result.spawn_error,
                 gating,
                 False,
                 details,
             )
-        if run_result.returncode in {126, 127}:
+        lines = runtime_lines(run_result)
+        inconclusive_lines = [
+            line
+            for line in lines
+            if line.startswith(RUNTIME_INCONCLUSIVE_PREFIX)
+        ]
+        details["runtime_inconclusive_lines"] = inconclusive_lines
+        details["runtime_evidence"] = {
+            "classification": (
+                "inconclusive" if inconclusive_lines else "termination"
+            ),
+            "lines": inconclusive_lines,
+        }
+        if run_result.timed_out and not inconclusive_lines:
             return TestResult(
                 case.case_id,
                 case.category,
                 "error",
                 "runtime-infrastructure",
-                "runtime-negative test returned infrastructure status {}".format(
-                    run_result.returncode
-                ),
+                "runtime-negative test exceeded the timeout",
                 gating,
-                True,
+                False,
                 details,
             )
         stop_id = case.metadata.stop_id or ""
         expected = "TEST-STOP: {}".format(stop_id)
         unexpected = "TEST-UNEXPECTED-RETURN: {}".format(stop_id)
-        lines = runtime_lines(run_result)
-        if expected not in lines:
+        stop_lines = [
+            line for line in lines if line.startswith("TEST-STOP:")
+        ]
+        marker_count = stop_lines.count(expected)
+        unexpected_stop_markers = [
+            line for line in stop_lines if line != expected
+        ]
+        details["runtime_protocol"] = {
+            "marker": expected,
+            "matching_marker_count": marker_count,
+            "selected_stop_image": case.metadata.stop_image,
+            "unexpected_stop_markers": unexpected_stop_markers,
+        }
+        if unexpected_stop_markers:
+            return TestResult(
+                case.case_id,
+                case.category,
+                "fail",
+                "unexpected-runtime-marker",
+                "runtime output contained unexpected TEST-STOP marker lines",
+                gating,
+                True,
+                details,
+            )
+        if marker_count == 0:
             return TestResult(
                 case.case_id,
                 case.category,
@@ -2623,6 +3133,18 @@ class SuiteRunner:
                 "runtime output did not contain exact line {!r}".format(
                     expected
                 ),
+                gating,
+                True,
+                details,
+            )
+        if case.metadata.stop_image is not None and marker_count != 1:
+            return TestResult(
+                case.case_id,
+                case.category,
+                "fail",
+                "runtime-marker-count",
+                "selected-image runtime printed {!r} {} times; "
+                "expected exactly one".format(expected, marker_count),
                 gating,
                 True,
                 details,
@@ -2638,6 +3160,18 @@ class SuiteRunner:
                 "runtime test reported return past its intended ERROR STOP",
                 gating,
                 True,
+                details,
+            )
+        if inconclusive_lines:
+            return TestResult(
+                case.case_id,
+                case.category,
+                "error",
+                "runtime-inconclusive",
+                "runtime reported inconclusive synchronization evidence: "
+                + "; ".join(inconclusive_lines),
+                gating,
+                False,
                 details,
             )
         if run_result.outcome() != calibration.outcome():
@@ -2658,7 +3192,14 @@ class SuiteRunner:
             case.category,
             "pass",
             "calibrated-error-stop",
-            "marker and termination match ordinary ERROR STOP calibration",
+            (
+                "marker and termination match ordinary {} ERROR STOP "
+                "calibration".format(
+                    "all-image"
+                    if case.metadata.stop_image is None
+                    else "selected-image"
+                )
+            ),
             gating,
             True,
             details,
@@ -2689,7 +3230,7 @@ class SuiteRunner:
                 },
             )
         objects, compile_results, error = self.compile_sources(
-            case.sources, work_dir
+            case.sources, work_dir, allow_missing_artifacts=True
         )
         details: Dict[str, Any] = {
             "compiler": process_details(compile_results),
@@ -2725,6 +3266,24 @@ class SuiteRunner:
             expectation_override,
         )
         strict = self.args.mode == "strict"
+        enhanced = case.metadata.diagnostic_class == "enhanced"
+        diagnostic_reason = (
+            "enhanced-diagnostic-observed"
+            if enhanced
+            else "required-diagnostic-reported"
+        )
+
+        def diagnostic_message(phase_name: str, rejected: bool) -> str:
+            classification = "enhanced" if enhanced else "required"
+            if rejected:
+                return (
+                    "matching {} {} diagnostic accompanied rejection".format(
+                        classification, phase_name
+                    )
+                )
+            return "matching {} {} diagnostic was reported".format(
+                classification, phase_name
+            )
 
         if phase == "compile":
             if compile_match is None:
@@ -2754,12 +3313,8 @@ class SuiteRunner:
                 case.case_id,
                 case.category,
                 "pass",
-                "required-diagnostic-reported",
-                (
-                    "matching diagnostic was reported"
-                    if not strict
-                    else "matching diagnostic accompanied compile rejection"
-                ),
+                diagnostic_reason,
+                diagnostic_message("compile", strict),
                 gating,
                 True,
                 details,
@@ -2771,8 +3326,8 @@ class SuiteRunner:
                     case.case_id,
                     case.category,
                     "pass",
-                    "required-diagnostic-reported",
-                    "matching compile diagnostic accompanied rejection",
+                    diagnostic_reason,
+                    diagnostic_message("compile", True),
                     gating,
                     True,
                     details,
@@ -2796,13 +3351,27 @@ class SuiteRunner:
                 case.case_id,
                 case.category,
                 "pass",
-                "required-diagnostic-reported",
-                "matching compile diagnostic was reported with status zero",
+                diagnostic_reason,
+                diagnostic_message("compile", False),
                 gating,
                 True,
                 details,
             )
 
+        object_error = self.compiled_artifact_error(
+            objects, len(case.sources)
+        )
+        if object_error is not None:
+            return TestResult(
+                case.case_id,
+                case.category,
+                "error",
+                "compiler-infrastructure",
+                object_error,
+                gating,
+                False,
+                details,
+            )
         executable, link_result, error = self.link_objects(objects, work_dir)
         details["link"] = link_result.to_dict()
         if error is not None:
@@ -2868,12 +3437,8 @@ class SuiteRunner:
             case.case_id,
             case.category,
             "pass",
-            "required-diagnostic-reported",
-            (
-                "matching link diagnostic was reported"
-                if not strict
-                else "matching link diagnostic accompanied rejection"
-            ),
+            diagnostic_reason,
+            diagnostic_message("link", strict),
             gating,
             True,
             details,
@@ -2913,16 +3478,46 @@ class SuiteRunner:
         kind_source_text, counts = generate_kind_runtime_source(inventory)
         kind_source = generated_dir / "processor_kinds_generated.f90"
         kind_source.write_text(kind_source_text, encoding="utf-8")
-        extended = "extended-rank-limit" in self.args.selected_drafts
+        extended_selected = (
+            "extended-rank-limit" in self.args.selected_drafts
+        )
         rank_details: Optional[Dict[str, Any]] = None
         rank_source: Optional[Path] = None
-        if inventory.max_rank is not None:
+        extended_rank_details: Optional[Dict[str, Any]] = None
+        extended_rank_source: Optional[Path] = None
+        if (
+            inventory.max_rank is not None
+            and inventory.max_rank_error is None
+        ):
             rank_source_text, rank_details = generate_rank_runtime_source(
-                inventory, extended_rank=extended
+                inventory,
+                extended_rank=False,
             )
             rank_source = generated_dir / "processor_rank_generated.f90"
             rank_source.write_text(rank_source_text, encoding="utf-8")
-        manifest = generation_manifest(inventory, counts, rank_details)
+            if extended_selected and inventory.max_rank > 15:
+                (
+                    extended_rank_source_text,
+                    extended_rank_details,
+                ) = generate_rank_runtime_source(
+                    inventory,
+                    extended_rank=True,
+                )
+                extended_rank_source = (
+                    generated_dir
+                    / "processor_rank_extended_generated.f90"
+                )
+                extended_rank_source.write_text(
+                    extended_rank_source_text,
+                    encoding="utf-8",
+                )
+        manifest = generation_manifest(
+            inventory,
+            counts,
+            rank_details,
+            extended_rank_selected=extended_selected,
+            extended_rank_details=extended_rank_details,
+        )
         manifest_path = generated_dir / "manifest.json"
         manifest_path.write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",
@@ -2934,7 +3529,10 @@ class SuiteRunner:
                 source=kind_source,
                 expected_marker="FGS-GENERATED-KINDS-PASS",
                 gating=True,
-                details={"counts": counts},
+                details={
+                    "counts": counts,
+                    "generation": generated_kind_details(inventory),
+                },
             )
         ]
         if rank_source is None:
@@ -2943,7 +3541,7 @@ class SuiteRunner:
                     "@generated/processor-rank",
                     "generated",
                     "error",
-                    "language-prerequisite",
+                    "invalid-max-rank-inventory",
                     inventory.max_rank_error
                     or "ordinary MAX_RANK inventory is unavailable",
                     True,
@@ -2952,23 +3550,57 @@ class SuiteRunner:
                 )
             )
         else:
-            rank_gating = not (
-                rank_details
-                and rank_details.get("draft_interpretation")
-                and not self.args.gate_drafts
-            )
             results.append(
                 self.execute_generated_source(
                     case_id="@generated/processor-rank",
                     source=rank_source,
                     expected_marker="FGS-GENERATED-RANK-PASS",
-                    gating=rank_gating,
+                    gating=True,
                     details={"rank": rank_details},
                     expected_output_lines=rank_details.get(
                         "expected_output_lines"
                     ),
                 )
             )
+        if (
+            extended_selected
+            and inventory.max_rank_error is None
+            and inventory.max_rank is not None
+        ):
+            if extended_rank_source is None:
+                results.append(
+                    TestResult(
+                        "@generated/processor-rank-extended",
+                        "generated",
+                        "skip",
+                        "extended-rank-unavailable",
+                        (
+                            "extended rank coverage requires processor "
+                            "MAX_RANK greater than 15"
+                        ),
+                        False,
+                        False,
+                        {
+                            "inventory": inventory.to_dict(),
+                            "portable_case": (
+                                "@generated/processor-rank"
+                            ),
+                        },
+                    )
+                )
+            else:
+                results.append(
+                    self.execute_generated_source(
+                        case_id="@generated/processor-rank-extended",
+                        source=extended_rank_source,
+                        expected_marker="FGS-GENERATED-RANK-PASS",
+                        gating=self.args.gate_drafts,
+                        details={"rank": extended_rank_details},
+                        expected_output_lines=extended_rank_details.get(
+                            "expected_output_lines"
+                        ),
+                    )
+                )
         return results
 
     def execute_generated_source(
@@ -3162,6 +3794,7 @@ def pre_execution_result(
         case.category == "invalid_compile_time"
         and case.metadata.diagnostic_class == "enhanced"
         and args.mode != "strict"
+        and not draft_case
     ):
         return TestResult(
             case.case_id,
@@ -3232,25 +3865,51 @@ def summarize_results(results: Sequence[TestResult]) -> Dict[str, Any]:
     counts = {"pass": 0, "fail": 0, "error": 0, "skip": 0}
     for result in results:
         counts[result.status] += 1
+    coverage_results = [
+        result
+        for result in results
+        if result.category not in {"prerequisite", "inventory"}
+    ]
     gating_failures = [
         result
-        for result in results
+        for result in coverage_results
         if result.gating and result.status in {"fail", "error"}
     ]
-    executed_gating_cases = [
+    observation_failures = [
         result
-        for result in results
-        if result.gating
-        and result.executed
-        and result.category not in {"prerequisite", "inventory"}
-        and result.status in {"pass", "fail", "error"}
+        for result in coverage_results
+        if not result.gating and result.status in {"fail", "error"}
     ]
-    complete = not gating_failures and bool(executed_gating_cases)
+    executed_cases = [
+        result for result in coverage_results if result.executed
+    ]
+    executed_gating_cases = [
+        result for result in executed_cases if result.gating
+    ]
+    executed_observation_cases = [
+        result for result in executed_cases if not result.gating
+    ]
+    unexecuted_cases = [
+        result for result in coverage_results if not result.executed
+    ]
+    has_executed_cases = bool(executed_cases)
+    coverage_complete = bool(coverage_results) and not unexecuted_cases
+    profile_success = has_executed_cases and not gating_failures
     return {
         "counts": counts,
         "gating_failures": len(gating_failures),
+        "observation_failures": len(observation_failures),
+        "coverage_cases": len(coverage_results),
+        "executed_cases": len(executed_cases),
         "executed_gating_cases": len(executed_gating_cases),
-        "complete": complete,
+        "executed_observation_cases": len(executed_observation_cases),
+        "unexecuted_cases": len(unexecuted_cases),
+        "skipped_cases": sum(
+            result.status == "skip" for result in coverage_results
+        ),
+        "has_executed_cases": has_executed_cases,
+        "profile_success": profile_success,
+        "coverage_complete": coverage_complete,
     }
 
 
@@ -3354,11 +4013,12 @@ def run_suite(args: argparse.Namespace) -> int:
                 results.extend(runner.generated_results())
             summary = summarize_results(results)
             payload = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "command": "run",
                 "run_id": work.run_id,
                 "suite_root": str(suite_root),
                 "compiler": runner.driver.display,
+                "c_compiler": runner.driver.c_display,
                 "mode": args.mode,
                 "selected_drafts": sorted(args.selected_drafts),
                 "drafts_gating": args.gate_drafts,
@@ -3380,6 +4040,8 @@ def run_suite(args: argparse.Namespace) -> int:
                 print(json.dumps(payload, indent=2, sort_keys=True))
             else:
                 print("FC={}".format(runner.driver.display))
+                if any(case.c_sources for case in cases):
+                    print("CC={}".format(runner.driver.c_display))
                 print("mode={}".format(args.mode))
                 if args.expectation_overrides.source_file is not None:
                     active_count = len(
@@ -3405,16 +4067,29 @@ def run_suite(args: argparse.Namespace) -> int:
                         counts["skip"],
                     )
                 )
-                if not summary["complete"]:
-                    if summary["gating_failures"]:
-                        print("INCOMPLETE: gating failures occurred")
-                    else:
-                        print("INCOMPLETE: no gating test actually executed")
+                if summary["profile_success"]:
+                    print("PROFILE: PASS")
+                elif summary["gating_failures"]:
+                    print("PROFILE: FAIL (gating failures occurred)")
+                else:
+                    print("PROFILE: EMPTY (no coverage case executed)")
+                print(
+                    "COVERAGE: {} ({} of {} cases executed; {} skipped)".format(
+                        (
+                            "COMPLETE"
+                            if summary["coverage_complete"]
+                            else "INCOMPLETE"
+                        ),
+                        summary["executed_cases"],
+                        summary["coverage_cases"],
+                        summary["skipped_cases"],
+                    )
+                )
                 if args.keep_work:
                     print("work: {}".format(work.path))
             if summary["gating_failures"]:
                 return 1
-            if not summary["complete"]:
+            if not summary["has_executed_cases"]:
                 return 2
             return 0
     except (OSError, ValueError) as exc:
@@ -3422,7 +4097,7 @@ def run_suite(args: argparse.Namespace) -> int:
             print(
                 json.dumps(
                     {
-                        "schema_version": 1,
+                        "schema_version": 2,
                         "command": "run",
                         "fatal_error": str(exc),
                     },
@@ -3518,6 +4193,10 @@ def list_or_check(args: argparse.Namespace, check: bool) -> int:
                 parts.append("diagnostic=" + metadata.diagnostic_class)
             if metadata.stop_id:
                 parts.append("stop=" + metadata.stop_id)
+            if metadata.stop_image is not None:
+                parts.append("stop-image={}".format(metadata.stop_image))
+            if metadata.pass_id:
+                parts.append("pass=" + metadata.pass_id)
             if metadata.images != 1:
                 parts.append("images={}".format(metadata.images))
             print("\t".join(parts))
@@ -3555,6 +4234,7 @@ def inventory_command(args: argparse.Namespace) -> int:
                 "command": "inventory",
                 "run_id": work.run_id,
                 "compiler": runner.driver.display,
+                "c_compiler": runner.driver.c_display,
                 "inventory": (
                     None if inventory is None else inventory.to_dict()
                 ),
@@ -3654,6 +4334,7 @@ def generate_command(args: argparse.Namespace) -> int:
         targets = [
             output / "processor_kinds_generated.f90",
             output / "processor_rank_generated.f90",
+            output / "processor_rank_extended_generated.f90",
             output / "manifest.json",
         ]
         if not args.force and any(target.exists() for target in targets):
@@ -3673,23 +4354,53 @@ def generate_command(args: argparse.Namespace) -> int:
                 raise ValueError(
                     runner.inventory_error or "processor inventory failed"
                 )
+            if inventory.max_rank_error is not None:
+                raise ValueError(
+                    "invalid MAX_RANK inventory: {}".format(
+                        inventory.max_rank_error
+                    )
+                )
+            if inventory.max_rank is None:
+                raise ValueError("MAX_RANK inventory is unavailable")
             kind_text, counts = generate_kind_runtime_source(inventory)
             kind_path = output / "processor_kinds_generated.f90"
             kind_path.write_text(kind_text, encoding="utf-8")
-            rank_details: Optional[Dict[str, Any]] = None
-            rank_path: Optional[Path] = None
-            if inventory.max_rank is not None:
-                rank_text, rank_details = generate_rank_runtime_source(
+            extended_selected = (
+                "extended-rank-limit" in args.selected_drafts
+            )
+            rank_text, rank_details = generate_rank_runtime_source(
+                inventory,
+                extended_rank=False,
+            )
+            rank_path = output / "processor_rank_generated.f90"
+            rank_path.write_text(rank_text, encoding="utf-8")
+            extended_rank_details: Optional[Dict[str, Any]] = None
+            extended_rank_path: Optional[Path] = None
+            managed_extended_path = (
+                output / "processor_rank_extended_generated.f90"
+            )
+            if extended_selected and inventory.max_rank > 15:
+                (
+                    extended_rank_text,
+                    extended_rank_details,
+                ) = generate_rank_runtime_source(
                     inventory,
-                    extended_rank=(
-                        "extended-rank-limit" in args.selected_drafts
-                    ),
+                    extended_rank=True,
                 )
-                rank_path = output / "processor_rank_generated.f90"
-                rank_path.write_text(rank_text, encoding="utf-8")
-            elif (output / "processor_rank_generated.f90").exists():
-                (output / "processor_rank_generated.f90").unlink()
-            manifest = generation_manifest(inventory, counts, rank_details)
+                extended_rank_path = managed_extended_path
+                extended_rank_path.write_text(
+                    extended_rank_text,
+                    encoding="utf-8",
+                )
+            elif args.force and managed_extended_path.exists():
+                managed_extended_path.unlink()
+            manifest = generation_manifest(
+                inventory,
+                counts,
+                rank_details,
+                extended_rank_selected=extended_selected,
+                extended_rank_details=extended_rank_details,
+            )
             manifest_path = output / "manifest.json"
             manifest_path.write_text(
                 json.dumps(manifest, indent=2, sort_keys=True) + "\n",
@@ -3701,44 +4412,61 @@ def generate_command(args: argparse.Namespace) -> int:
                     kind_path,
                     "FGS-GENERATED-KINDS-PASS",
                     True,
-                    {"counts": counts},
+                    {
+                        "counts": counts,
+                        "generation": generated_kind_details(inventory),
+                    },
                 )
             ]
-            if rank_path is None:
+            results.append(
+                runner.execute_generated_source(
+                    "@generated/processor-rank",
+                    rank_path,
+                    "FGS-GENERATED-RANK-PASS",
+                    True,
+                    {"rank": rank_details},
+                    rank_details.get("expected_output_lines"),
+                )
+            )
+            if extended_selected and extended_rank_path is None:
                 results.append(
                     TestResult(
-                        "@generated/processor-rank",
+                        "@generated/processor-rank-extended",
                         "generated",
-                        "error",
-                        "language-prerequisite",
-                        inventory.max_rank_error
-                        or "MAX_RANK inventory unavailable",
-                        True,
+                        "skip",
+                        "extended-rank-unavailable",
+                        (
+                            "extended rank coverage requires processor "
+                            "MAX_RANK greater than 15"
+                        ),
                         False,
-                        {},
+                        False,
+                        {
+                            "inventory": inventory.to_dict(),
+                            "portable_case": "@generated/processor-rank",
+                        },
                     )
                 )
-            else:
-                rank_gating = not (
-                    rank_details
-                    and rank_details.get("draft_interpretation")
-                    and not args.gate_drafts
-                )
+            elif extended_rank_path is not None:
                 results.append(
                     runner.execute_generated_source(
-                        "@generated/processor-rank",
-                        rank_path,
+                        "@generated/processor-rank-extended",
+                        extended_rank_path,
                         "FGS-GENERATED-RANK-PASS",
-                        rank_gating,
-                        {"rank": rank_details},
-                        rank_details.get("expected_output_lines"),
+                        args.gate_drafts,
+                        {"rank": extended_rank_details},
+                        extended_rank_details.get(
+                            "expected_output_lines"
+                        ),
                     )
                 )
             summary = summarize_results(results)
             payload = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "command": "generate",
                 "output": str(output),
+                "compiler": runner.driver.display,
+                "c_compiler": runner.driver.c_display,
                 "inventory": inventory.to_dict(),
                 "manifest": manifest,
                 "results": [result.to_dict() for result in results],
@@ -3748,19 +4476,24 @@ def generate_command(args: argparse.Namespace) -> int:
                 print(json.dumps(payload, indent=2, sort_keys=True))
             else:
                 print("generated: {}".format(kind_path))
-                if rank_path:
-                    print("generated: {}".format(rank_path))
+                print("generated: {}".format(rank_path))
+                if extended_rank_path:
+                    print("generated: {}".format(extended_rank_path))
                 print("manifest: {}".format(manifest_path))
                 for result in results:
                     print(human_result(result))
                     print_failure_output(result)
-            return 0 if summary["complete"] else 1
+            if summary["gating_failures"]:
+                return 1
+            if not summary["has_executed_cases"]:
+                return 2
+            return 0
     except (OSError, ValueError) as exc:
         if args.json:
             print(
                 json.dumps(
                     {
-                        "schema_version": 1,
+                        "schema_version": 2,
                         "command": "generate",
                         "fatal_error": str(exc),
                     },
@@ -3791,6 +4524,19 @@ def add_compiler_options(parser: argparse.ArgumentParser) -> None:
         "--fcflags",
         default=os.environ.get("FCFLAGS", ""),
         help="quoted compiler flags (default: $FCFLAGS)",
+    )
+    parser.add_argument(
+        "--cc",
+        default=os.environ.get("CC", "cc"),
+        help=(
+            "quoted C compiler or wrapper command for .c companions "
+            "(default: $CC or cc; resolved only for mixed-language cases)"
+        ),
+    )
+    parser.add_argument(
+        "--cflags",
+        default=os.environ.get("CFLAGS", ""),
+        help="quoted C compiler flags (default: $CFLAGS)",
     )
     parser.add_argument(
         "--launcher",
@@ -3853,10 +4599,16 @@ def build_parser() -> argparse.ArgumentParser:
         "run",
         help="run selected fixtures and generated processor cases (default)",
         epilog=(
+            "Runtime-positive fixtures require TEST-PASS: <id>, status zero, "
+            "and exactly TEST-IMAGES output lines equal to TEST-PASS: <id>. "
             "Runtime TEST-STOP cases are calibrated with the same literal "
             "ERROR STOP code, literal QUIET value, and optional intervening "
-            "FLUSH(output_unit). Dynamic stop codes, QUIET expressions, or "
-            "other intervening statements are rejected as uncalibratable."
+            "FLUSH(output_unit). TEST-STOP-IMAGE selects one image after an "
+            "initial SYNC ALL; absent metadata preserves all-image calibration. "
+            "TEST-INCONCLUSIVE and FGS-CALIBRATION-INCONCLUSIVE evidence is "
+            "reported as an error and is never credited as a pass. "
+            "Dynamic stop codes, QUIET expressions, or other intervening "
+            "statements are rejected as uncalibratable."
         ),
     )
     add_suite_root(run)
@@ -3937,7 +4689,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="ID",
-        help="select extended-rank-limit to exercise ranks above 15",
+        help=(
+            "select extended-rank-limit to add a separate optional artifact "
+            "above rank 15; the portable rank-0:15 case remains gating"
+        ),
     )
     generate.add_argument(
         "--gate-drafts",

@@ -1,4 +1,5 @@
 ! TEST-RULE: C826 C875 8.5.17 15.6.2.4 17.10.2.24
+! TEST-PASS: coarray_rank
 ! Portable coarray rank sets are capped by rank+corank<=15 even if a
 ! processor reports a larger extension through MAX_RANK.
 program coarray_rank_p
@@ -80,6 +81,7 @@ program coarray_rank_p
   if (verify_c2(two_scalar) /= 21) error stop "corank-two scalar"
   if (verify_c2(two_vector) /= 145) error stop "corank-two vector"
   if (verify_c15(corank_limit) /= 151) error stop "corank-fifteen scalar"
+  print '(a)', 'TEST-PASS: coarray_rank'
 contains
   generic function verify_c1(x, first, last) result(code)
     type(integer, real), intent(in), &
